@@ -1,7 +1,9 @@
+import type { InstrumentName } from './instrument';
 import type { ProviderName } from './providers/factory';
 
 export type CliConfig = {
   provider: ProviderName;
+  instrument: InstrumentName;
   theme: string;
   length: number;
   bpm: number;
@@ -113,6 +115,14 @@ const EXPORT_AUDIO_OPTIONS: Option<'none' | 'mp3' | 'mp4'>[] = [
   { value: 'none', label: 'MIDI only (.mid)', help: 'No extra audio/video export.' },
   { value: 'mp3', label: 'MIDI + MP3', help: 'Render audio from generated notes.' },
   { value: 'mp4', label: 'MIDI + MP4', help: 'Render video with static cover image + audio.' },
+];
+
+const INSTRUMENT_OPTIONS: Option<InstrumentName>[] = [
+  { value: 'lead', label: 'Lead', help: 'Higher melodic line.' },
+  { value: 'bass', label: 'Bass', help: 'Lower-end groove line.' },
+  { value: 'pad', label: 'Pad', help: 'Smoother, wider note range.' },
+  { value: 'keys', label: 'Keys', help: 'Mid register keyboard tone.' },
+  { value: 'drums', label: 'Drums', help: 'Maps notes to drum hits (channel 10).' },
 ];
 
 function recommendedProvider(defaultProvider: ProviderName): ProviderName {
@@ -442,16 +452,28 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       defaults.provider,
     )) as ProviderName;
 
-    section('2) Style', 'Choose a preset music category or custom theme.');
+    section('2) Instrument', 'Choose instrument profile for output mapping.');
+    const instrument = (await selectPrompt({
+      message: 'Instrument',
+      choices: INSTRUMENT_OPTIONS.map((option) => ({
+        value: option.value,
+        name: option.label,
+        description: option.help,
+      })),
+      default: defaults.instrument,
+      theme: inquirerTheme,
+    })) as InstrumentName;
+
+    section('3) Style', 'Choose a preset music category or custom theme.');
     const theme = await pickTheme((cfg) => selectPrompt(cfg) as Promise<string>, inputPrompt, defaults.theme);
-    section('3) Structure', 'Set length and tempo.');
+    section('4) Structure', 'Set length and tempo.');
     const length = await pickLength(
       (cfg) => selectPrompt(cfg) as Promise<number>,
       inputPrompt,
       defaults.length,
     );
     const bpm = await pickBpm((cfg) => selectPrompt(cfg) as Promise<number>, inputPrompt, defaults.bpm);
-    section('4) Input', 'Choose seed note input mode.');
+    section('5) Input', 'Choose seed note input mode.');
     const seedSource = (await selectPrompt({
       message: 'Seed input mode',
       choices: SEED_SOURCE_OPTIONS.map((option) => ({
@@ -481,7 +503,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
 
     const beep = false;
 
-    section('5) Export Open Action', 'What should happen right after MIDI export?');
+    section('6) Export Open Action', 'What should happen right after MIDI export?');
     const openAfterExport = (await selectPrompt({
       message: 'After export',
       choices: OPEN_AFTER_EXPORT_OPTIONS.map((option) => ({
@@ -493,7 +515,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       theme: inquirerTheme,
     })) as 'none' | 'finder' | 'garageband';
 
-    section('6) Export Media Format', 'Optional extra export format when you choose export actions.');
+    section('7) Export Media Format', 'Optional extra export format when you choose export actions.');
     const exportAudio = (await selectPrompt({
       message: 'Export profile',
       choices: EXPORT_AUDIO_OPTIONS.map((option) => ({
@@ -507,6 +529,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
 
     const config = {
       provider,
+      instrument,
       theme,
       length,
       bpm,
@@ -519,6 +542,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
 
     section('Summary');
     console.log(color(`Provider:   ${config.provider}`, `${c.dim}${palette.soft}`));
+    console.log(color(`Instrument: ${config.instrument}`, `${c.dim}${palette.soft}`));
     console.log(color(`Theme:      ${config.theme}`, `${c.dim}${palette.soft}`));
     console.log(color(`Length:     ${config.length} notes`, `${c.dim}${palette.soft}`));
     console.log(color(`BPM:        ${config.bpm}`, `${c.dim}${palette.soft}`));

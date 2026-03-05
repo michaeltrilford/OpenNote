@@ -1,5 +1,6 @@
 import readline from 'node:readline';
 import { createInterface } from 'node:readline/promises';
+import type { InstrumentProfile } from './instrument';
 import type { GeneratedNote } from './types';
 
 export type MidiNoteOn = {
@@ -13,6 +14,7 @@ type SeedOptions = {
 
 type PlaybackOptions = {
   beep?: boolean;
+  instrument?: InstrumentProfile;
 };
 
 const SCALE_OFFSETS = [0, 2, 4, 5, 7, 9, 11, 12];
@@ -160,6 +162,14 @@ export async function playSequenceToOutput(
   sequence: GeneratedNote[],
   options: PlaybackOptions = {},
 ): Promise<void> {
+  if (options.instrument) {
+    console.log(
+      color(
+        `MIDI PROGRAM_CHANGE ch=${options.instrument.midiChannel + 1} program=${options.instrument.program} (${options.instrument.label})`,
+        `${c.bold}${palette.primary}`,
+      ),
+    );
+  }
   for (const note of sequence) {
     console.log(color(`MIDI OUT NOTE_ON ${note.pitch} ${note.velocity}`, palette.primary));
     if (options.beep) process.stdout.write('\x07');

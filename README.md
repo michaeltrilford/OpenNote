@@ -19,28 +19,31 @@ The CLI uses arrow keys + Enter and runs this setup:
 - Demo mode (`mock`) or live provider (`openai`, `claude`, `groq`, `grok`)
 - If provider key is missing, CLI prompts for it
 
-2. Style
+2. Instrument
+- `lead`, `bass`, `pad`, `keys`, `drums`
+
+3. Style
 - Preset music categories or custom theme
 
-3. Structure
+4. Structure
 - Length (notes)
 - BPM
 
-4. Input
+5. Input
 - `keyboard` mode: press `1-8`, `Shift+1-8` for sharps, `+/-` octave
 - `manual` mode: enter MIDI seed pitch (`0-127`)
 
-5. Export open action
+6. Export open action
 - `none`
 - `finder`
 - `garageband`
 
-6. Export media profile
+7. Export media profile
 - `none` (MIDI only)
 - `mp3`
 - `mp4`
 
-7. Summary + confirm
+8. Summary + confirm
 - `Start generation`
 - `Back to setup`
 
@@ -73,6 +76,7 @@ npm run note -- --no-interactive --provider=mock --theme="ambient" --length=16 -
 
 ## CLI flags
 - `--provider=mock|openai|claude|groq|grok`
+- `--instrument=lead|bass|pad|keys|drums`
 - `--theme="..."`
 - `--length=<notes>`
 - `--bpm=<tempo>`

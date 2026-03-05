@@ -2,6 +2,7 @@ import { dirname, extname, join, basename } from 'node:path';
 import { unlink } from 'node:fs/promises';
 import { exportSequenceToMidi } from './exportMidi';
 import { exportSequenceToWav, exportWavToMp3, exportWavToMp4, isFfmpegMissing } from './exportAudio';
+import { applyInstrumentProfile, getInstrumentProfile, type InstrumentName } from './instrument';
 import { promptCliConfig } from './cli';
 import { generateSequence } from './generator';
 import { playSequenceToOutput, waitForSeedNote } from './midi';
@@ -169,6 +170,7 @@ Non-interactive mode:
 
 Flags:
   --provider=mock|openai|claude|groq|grok
+  --instrument=lead|bass|pad|keys|drums
   --theme="<style prompt>"
   --length=<notes>
   --bpm=<tempo>
@@ -205,6 +207,7 @@ async function main() {
   const exportMidiFlag = process.argv.find((a) => a.startsWith('--export-midi='))?.split('=').slice(1).join('=');
   const defaults = {
     provider: arg('provider', 'mock') as ProviderName,
+    instrument: arg('instrument', 'lead') as InstrumentName,
     theme: arg('theme', 'dark ambient techno'),
     length: Number(arg('length', '16')),
     bpm: Number(arg('bpm', '120')),
@@ -219,6 +222,7 @@ async function main() {
     ? await promptCliConfig(defaults)
     : {
         provider: defaults.provider,
+        instrument: defaults.instrument,
         theme: defaults.theme,
         length: defaults.length,
         bpm: defaults.bpm,
@@ -240,20 +244,26 @@ async function main() {
       targetLength: config.length,
       bpm: config.bpm,
     });
+    const instrumentSequence = applyInstrumentProfile(sequence, config.instrument);
+    const instrumentProfile = getInstrumentProfile(config.instrument);
 
     console.log(color('Session', `${c.bold}${palette.primary}`));
     logKV('Provider:', config.provider);
+    logKV('Instrument:', `${instrumentProfile.label} (ch ${instrumentProfile.midiChannel + 1}, program ${instrumentProfile.program})`);
     logKV('Theme:', config.theme);
     logKV('Seed source:', config.seedSource);
     logKV('Seed pitch:', seedPitch);
-    logKV('Generated notes:', `${sequence.length} notes`);
-    logKV('Preview:', formatNotePreview(sequence));
+    logKV('Generated notes:', `${instrumentSequence.length} notes`);
+    logKV('Preview:', formatNotePreview(instrumentSequence));
 
-    await playSequenceToOutput(sequence, { beep: config.beep });
+    await playSequenceToOutput(instrumentSequence, {
+      beep: config.beep,
+      instrument: instrumentProfile,
+    });
 
     if (exportMidiFlag && !interactive) {
       await maybeExportMidi(
-        sequence,
+        instrumentSequence,
         config.bpm,
         exportMidiFlag,
         config.openAfterExport,
@@ -277,7 +287,7 @@ async function main() {
 
     if (action === 'export-finish') {
       await maybeExportMidi(
-        sequence,
+        instrumentSequence,
         config.bpm,
         undefined,
         config.openAfterExport,
@@ -289,7 +299,7 @@ async function main() {
     }
 
     await maybeExportMidi(
-      sequence,
+      instrumentSequence,
       config.bpm,
       undefined,
       config.openAfterExport,
