@@ -1,0 +1,27 @@
+{
+  "name": "opennote",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE",
+    "tsconfig.json"
+  ],
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "pack:check": "npm pack --dry-run"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.8.4",
+    "ffmpeg-static": "^5.2.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3"
+  }
+}

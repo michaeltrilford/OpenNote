@@ -1,0 +1,38 @@
+# Node deps
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local env
+.env
+.env.*
+!.env.example
+
+# Build/cache
+dist/
+build/
+.tsbuildinfo
+.cache/
+
+# Test/coverage
+coverage/
+.nyc_output/
+
+# Generated exports/media
+exports/
+*.mid
+*.midi
+*.wav
+*.mp3
+*.mp4
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
