@@ -54,6 +54,13 @@ Notes:
 - Export path auto-generates timestamped filename under `./exports/` unless `--export-midi=...` is provided.
 - MP4 cover image is fixed to `./src/assets/cover.png` (replace that file in the repo to change cover art).
 
+## Cover art workflow
+- Replace `./src/assets/cover.png` with your own image.
+- Drag your image into Figma or Affinity, design album art, export as PNG.
+- Save it back to `./src/assets/cover.png`.
+- Run OpenNote and export MP4.
+- Start making music.
+
 ## Non-interactive usage
 ```bash
 npm run start -- --no-interactive --provider=mock --theme="ambient" --length=16 --bpm=120 --seed-source=manual --seed=60
