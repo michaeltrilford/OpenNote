@@ -9,7 +9,7 @@ npm install
 
 ## Run
 ```bash
-npm run start
+npm run note
 ```
 
 ## Interactive flow
@@ -63,12 +63,12 @@ Notes:
 
 ## Non-interactive usage
 ```bash
-npm run start -- --no-interactive --provider=mock --theme="ambient" --length=16 --bpm=120 --seed-source=manual --seed=60
+npm run note -- --no-interactive --provider=mock --theme="ambient" --length=16 --bpm=120 --seed-source=manual --seed=60
 ```
 
 With export + Finder reveal:
 ```bash
-npm run start -- --no-interactive --provider=mock --theme="ambient" --length=16 --bpm=120 --seed-source=manual --seed=60 --export-midi=./exports/take-01.mid --open-after-export=finder --export-audio=mp4
+npm run note -- --no-interactive --provider=mock --theme="ambient" --length=16 --bpm=120 --seed-source=manual --seed=60 --export-midi=./exports/take-01.mid --open-after-export=finder --export-audio=mp4
 ```
 
 ## CLI flags

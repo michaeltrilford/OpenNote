@@ -13,7 +13,7 @@
     "tsconfig.json"
   ],
   "scripts": {
-    "start": "tsx src/index.ts",
+    "note": "tsx src/index.ts",
     "pack:check": "npm pack --dry-run"
   },
   "dependencies": {
