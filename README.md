@@ -16,7 +16,7 @@ npm run note
 The CLI uses arrow keys + Enter and runs this setup:
 
 1. Provider
-- Demo mode (`mock`) or live provider (`openai`, `claude`)
+- Demo mode (`mock`) or live provider (`openai`, `claude`, `groq`, `grok`)
 - If provider key is missing, CLI prompts for it
 
 2. Style
@@ -72,7 +72,7 @@ npm run note -- --no-interactive --provider=mock --theme="ambient" --length=16 -
 ```
 
 ## CLI flags
-- `--provider=mock|openai|claude`
+- `--provider=mock|openai|claude|groq|grok`
 - `--theme="..."`
 - `--length=<notes>`
 - `--bpm=<tempo>`
@@ -88,6 +88,8 @@ npm run note -- --no-interactive --provider=mock --theme="ambient" --length=16 -
 ## Provider keys
 - OpenAI: `OPENAI_API_KEY` (optional `OPENAI_MODEL`)
 - Claude: `ANTHROPIC_API_KEY` (optional `CLAUDE_MODEL`)
+- Groq: `GROQ_API_KEY` (optional `GROQ_MODEL`)
+- Grok (xAI): `XAI_API_KEY` (optional `GROK_MODEL`)
 
 ## npm publish checklist
 1. Keep `"private": true` during development to prevent accidental publish.

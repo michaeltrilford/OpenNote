@@ -162,13 +162,13 @@ function printHelp(): void {
   console.log(color('OpenNote CLI', `${c.bold}${palette.primary}`));
   console.log(`
 Interactive mode (recommended):
-  npm run start
+  npm run note
 
 Non-interactive mode:
-  npm run start -- --no-interactive --provider=mock --theme="ambient" --length=16 --bpm=120 --seed=60
+  npm run note -- --no-interactive --provider=mock --theme="ambient" --length=16 --bpm=120 --seed=60
 
 Flags:
-  --provider=mock|openai|claude
+  --provider=mock|openai|claude|groq|grok
   --theme="<style prompt>"
   --length=<notes>
   --bpm=<tempo>
@@ -184,6 +184,8 @@ Flags:
 Provider keys:
   OPENAI_API_KEY for openai
   ANTHROPIC_API_KEY for claude
+  GROQ_API_KEY for groq
+  XAI_API_KEY for grok
 In interactive mode, if key is missing you can paste it at prompt for the current session.
 
 Keyboard seed mode:

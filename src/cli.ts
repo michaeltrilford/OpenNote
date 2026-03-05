@@ -117,6 +117,8 @@ const EXPORT_AUDIO_OPTIONS: Option<'none' | 'mp3' | 'mp4'>[] = [
 
 function recommendedProvider(defaultProvider: ProviderName): ProviderName {
   if (process.env.OPENAI_API_KEY) return 'openai';
+  if (process.env.GROQ_API_KEY) return 'groq';
+  if (process.env.XAI_API_KEY) return 'grok';
   if (process.env.ANTHROPIC_API_KEY) return 'claude';
   return defaultProvider;
 }
@@ -142,6 +144,20 @@ function providerOptions(): Option<ProviderName>[] {
         ? 'Configured via ANTHROPIC_API_KEY.'
         : 'Requires ANTHROPIC_API_KEY.',
     },
+    {
+      value: 'groq',
+      label: 'Groq',
+      help: process.env.GROQ_API_KEY
+        ? 'Configured via GROQ_API_KEY.'
+        : 'Requires GROQ_API_KEY.',
+    },
+    {
+      value: 'grok',
+      label: 'Grok (xAI)',
+      help: process.env.XAI_API_KEY
+        ? 'Configured via XAI_API_KEY.'
+        : 'Requires XAI_API_KEY.',
+    },
   ];
 }
 
@@ -150,6 +166,8 @@ function parseProvider(inputValue: string): ProviderName | null {
   if (normalized === '1' || normalized === 'mock' || normalized === 'demo') return 'mock';
   if (normalized === '2' || normalized === 'openai' || normalized === 'codex') return 'openai';
   if (normalized === '3' || normalized === 'claude') return 'claude';
+  if (normalized === '4' || normalized === 'groq') return 'groq';
+  if (normalized === '5' || normalized === 'grok' || normalized === 'xai') return 'grok';
   return null;
 }
 
@@ -171,12 +189,35 @@ async function ensureProviderCredentials(
   }) => Promise<string>,
   provider: ProviderName,
 ): Promise<boolean> {
-  if (provider === 'mock') return true;
+  if (provider === 'mock') {
+    console.log(color('Using demo mode (no API key needed).', `${c.dim}${palette.soft}`));
+    return true;
+  }
 
-  if (provider === 'openai' && process.env.OPENAI_API_KEY) return true;
-  if (provider === 'claude' && process.env.ANTHROPIC_API_KEY) return true;
+  if (provider === 'openai' && process.env.OPENAI_API_KEY) {
+    console.log(color('OPENAI_API_KEY detected in environment.', `${c.dim}${palette.soft}`));
+    return true;
+  }
+  if (provider === 'claude' && process.env.ANTHROPIC_API_KEY) {
+    console.log(color('ANTHROPIC_API_KEY detected in environment.', `${c.dim}${palette.soft}`));
+    return true;
+  }
+  if (provider === 'groq' && process.env.GROQ_API_KEY) {
+    console.log(color('GROQ_API_KEY detected in environment.', `${c.dim}${palette.soft}`));
+    return true;
+  }
+  if (provider === 'grok' && process.env.XAI_API_KEY) {
+    console.log(color('XAI_API_KEY detected in environment.', `${c.dim}${palette.soft}`));
+    return true;
+  }
 
-  const keyName = provider === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY';
+  const keyName = provider === 'openai'
+    ? 'OPENAI_API_KEY'
+    : provider === 'claude'
+      ? 'ANTHROPIC_API_KEY'
+      : provider === 'groq'
+        ? 'GROQ_API_KEY'
+        : 'XAI_API_KEY';
   console.log(color(`${keyName} is not set.`, c.yellow));
   console.log(color('Paste key for this session (not saved to disk).', c.dim));
   const key = await passwordPrompt({
@@ -191,9 +232,14 @@ async function ensureProviderCredentials(
 
   if (provider === 'openai') {
     process.env.OPENAI_API_KEY = trimmed;
-  } else {
+  } else if (provider === 'claude') {
     process.env.ANTHROPIC_API_KEY = trimmed;
+  } else if (provider === 'groq') {
+    process.env.GROQ_API_KEY = trimmed;
+  } else {
+    process.env.XAI_API_KEY = trimmed;
   }
+  console.log(color(`${keyName} received for this session.`, `${c.bold}${palette.primary}`));
   return true;
 }
 
@@ -233,9 +279,9 @@ async function pickProvider(
   const ok = await ensureProviderCredentials(inputPrompt, passwordPrompt, selected);
   if (!ok) {
     const manual = await inputPrompt({
-      message: 'Choose provider (mock/openai/claude)',
+      message: 'Choose provider (mock/openai/claude/groq/grok)',
       default: recommended,
-      validate: (value) => (parseProvider(value) ? true : 'Enter mock, openai, or claude'),
+      validate: (value) => (parseProvider(value) ? true : 'Enter mock/openai/claude/groq/grok'),
       theme: inquirerTheme,
     });
     const parsed = parseProvider(manual);

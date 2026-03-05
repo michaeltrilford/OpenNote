@@ -90,6 +90,7 @@ export async function waitForSeedNote(options: SeedOptions = {}): Promise<MidiNo
 
   console.log(`\n${color('Keyboard seed mode', `${c.bold}${palette.primary}`)}`);
   console.log(color('Press 1-8 to choose note, Shift+1-8 for sharp, +/- for octave, q to cancel.', palette.soft));
+  console.log(color('Click this terminal window first if key presses are not detected.', `${c.bold}${palette.primary}`));
   console.log(color(`Current octave: ${octave}`, palette.soft));
 
   readline.emitKeypressEvents(process.stdin);
