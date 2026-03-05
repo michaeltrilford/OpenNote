@@ -1,4 +1,5 @@
 import type { GeneratedNote, LLMProvider, NextNoteRequest } from '../types';
+import { assertHeaderSafeApiKey } from './auth';
 import { systemPrompt, userPrompt } from '../prompt';
 import { computeRetryDelayMs, shouldRetryStatus, waitForRetry } from './retry';
 
@@ -28,12 +29,13 @@ export class GroqProvider implements LLMProvider {
   ) {}
 
   async nextNote(input: NextNoteRequest): Promise<GeneratedNote> {
+    const apiKey = assertHeaderSafeApiKey('Groq', this.apiKey);
     const maxRetries = 4;
     for (let attempt = 0; ; attempt++) {
       const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${this.apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

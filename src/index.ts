@@ -50,6 +50,25 @@ function logKV(label: string, value: string | number): void {
   console.log(color(`${label} `, palette.soft) + color(String(value), palette.primary));
 }
 
+async function withSpinner<T>(message: string, task: Promise<T>): Promise<T> {
+  const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  let i = 0;
+  process.stdout.write(`${color(frames[i], palette.primary)} ${color(message, palette.soft)}`);
+
+  const timer = setInterval(() => {
+    i = (i + 1) % frames.length;
+    process.stdout.write(`\r${color(frames[i], palette.primary)} ${color(message, palette.soft)}`);
+  }, 90);
+
+  try {
+    const result = await task;
+    process.stdout.write(`\r${color('✓', palette.primary)} ${color(`${message} done`, palette.soft)}\n`);
+    return result;
+  } finally {
+    clearInterval(timer);
+  }
+}
+
 function arg(name: string, fallback: string): string {
   const found = process.argv.find((a) => a.startsWith(`--${name}=`));
   return found ? found.split('=').slice(1).join('=') : fallback;
@@ -239,11 +258,14 @@ async function main() {
     const seedPitch =
       config.seedSource === 'keyboard' ? (await waitForSeedNote({ baseOctave: 4 })).pitch : config.seedPitch;
 
-    const sequence = await generateSequence(provider, seedPitch, {
-      theme: config.theme,
-      targetLength: config.length,
-      bpm: config.bpm,
-    });
+    const sequence = await withSpinner(
+      `Generating ${config.length} notes`,
+      generateSequence(provider, seedPitch, {
+        theme: config.theme,
+        targetLength: config.length,
+        bpm: config.bpm,
+      }),
+    );
     const instrumentSequence = applyInstrumentProfile(sequence, config.instrument);
     const instrumentProfile = getInstrumentProfile(config.instrument);
 
