@@ -174,6 +174,7 @@ After playback, action menu order is:
 Notes:
 - Export path auto-generates timestamped filename under `./exports/` unless `--export-midi=...` is provided.
 - MP4 cover image is fixed to `./src/assets/cover.png` (replace that file in the repo to change cover art).
+- MP3/MP4 exports also write MIDI stems by default (`-melody.mid`, `-bass.mid`, `-drums.mid` when present).
 
 ## Cover art workflow
 - Replace `./src/assets/cover.png` with your own image.
@@ -232,6 +233,7 @@ npm run note -- --no-interactive --provider=mock --mode=backing --theme="trap me
 - `--export-midi=<path.mid>`
 - `--open-after-export=none|finder|garageband`
 - `--export-audio=none|mp3|mp4`
+- `--export-stems=true|false`
 - `--no-interactive`
 - `--help`
 

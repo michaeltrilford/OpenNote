@@ -13,6 +13,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Duration stretch control (`1..4x`) to create longer phrases.
 - Drum backing expansions: clap, open hat, and perc toggles.
 - Timing feel control (`tight|human|offbeat|loose`) with amount (`0..100`).
+- Automatic MIDI stem export on MP3/MP4 runs (`melody`, `bass`, `drums`) with `--export-stems` override.
 
 ### Changed
 - Drum rendering improved for clearer hat/percussion output in exports.

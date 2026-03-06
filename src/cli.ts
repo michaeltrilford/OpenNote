@@ -39,6 +39,7 @@ export type CliConfig = {
   beep: boolean;
   openAfterExport: 'none' | 'finder' | 'garageband';
   exportAudio: 'none' | 'mp3' | 'mp4';
+  exportStems: boolean;
 };
 
 const c = {
@@ -690,6 +691,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         beep: false,
         openAfterExport: defaults.openAfterExport,
         exportAudio: defaults.exportAudio === 'none' ? 'mp4' : defaults.exportAudio,
+        exportStems: defaults.exportAudio === 'none' ? true : defaults.exportStems,
       };
 
       section('Surprise Setup', 'Auto-picked configuration. Starting generation now.');
@@ -766,6 +768,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         beep: false,
         openAfterExport: 'finder',
         exportAudio: 'mp4',
+        exportStems: true,
       };
 
       section('Basic Setup', 'Using quick defaults. Starting generation now.');
@@ -1196,6 +1199,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       beep,
       openAfterExport,
       exportAudio,
+      exportStems: exportAudio === 'none' ? defaults.exportStems : true,
     };
 
     section('Summary');
@@ -1240,6 +1244,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
     }
     console.log(color(`After export:${config.openAfterExport}`, `${c.dim}${palette.soft}`));
     console.log(color(`Export media:${config.exportAudio}`, `${c.dim}${palette.soft}`));
+    console.log(color(`Export stems:${config.exportStems ? 'on' : 'off'}`, `${c.dim}${palette.soft}`));
     if (config.exportAudio === 'mp4') console.log(color('Cover image: ./src/assets/cover.png', `${c.dim}${palette.soft}`));
     console.log('');
 

@@ -111,6 +111,12 @@ function floatArg(name: string, fallback: number, min: number, max: number): num
 
 type PostRunAction = 'finish' | 'retry' | 'export-finish' | 'export-retry';
 
+type StemGroups = {
+  melody: NoteEvent[];
+  bass: NoteEvent[];
+  drums: NoteEvent[];
+};
+
 const inquirerTheme = {
   icon: {
     cursor: '❯',
@@ -159,6 +165,8 @@ async function maybeExportMidi(
   explicitPath: string | undefined,
   openAfterExport: OpenAfterExport,
   exportAudio: 'none' | 'mp3' | 'mp4',
+  exportStems: boolean,
+  stems: StemGroups,
   coverImagePath: string,
   fx: FxSettings,
 ): Promise<string | null> {
@@ -166,6 +174,28 @@ async function maybeExportMidi(
   const written = await exportSequenceToMidi(sequence, bpm, path);
   console.log(color('MIDI exported:', palette.soft), written);
   let openPath = written;
+
+  if (exportStems) {
+    const ext = extname(written).toLowerCase();
+    const baseNoExt = ext === '.mid' || ext === '.midi'
+      ? written.slice(0, -ext.length)
+      : join(dirname(written), basename(written));
+    if (stems.melody.length > 0) {
+      const melodyPath = `${baseNoExt}-melody.mid`;
+      await exportSequenceToMidi(stems.melody, bpm, melodyPath);
+      console.log(color('Stem exported:', palette.soft), melodyPath);
+    }
+    if (stems.bass.length > 0) {
+      const bassPath = `${baseNoExt}-bass.mid`;
+      await exportSequenceToMidi(stems.bass, bpm, bassPath);
+      console.log(color('Stem exported:', palette.soft), bassPath);
+    }
+    if (stems.drums.length > 0) {
+      const drumsPath = `${baseNoExt}-drums.mid`;
+      await exportSequenceToMidi(stems.drums, bpm, drumsPath);
+      console.log(color('Stem exported:', palette.soft), drumsPath);
+    }
+  }
 
   if (exportAudio !== 'none') {
     try {
@@ -258,6 +288,7 @@ Flags:
   --export-midi=<path.mid>
   --open-after-export=none|finder|garageband
   --export-audio=none|mp3|mp4
+  --export-stems=true|false
   --no-interactive
   --help
 
@@ -323,6 +354,7 @@ async function main() {
     beep: boolArg('beep', false),
     openAfterExport: (arg('open-after-export', 'finder') as OpenAfterExport),
     exportAudio: (arg('export-audio', 'none') as 'none' | 'mp3' | 'mp4'),
+    exportStems: boolArg('export-stems', arg('export-audio', 'none') !== 'none'),
   };
 
   const config = interactive ? await promptCliConfig(defaults) : defaults;
@@ -368,6 +400,11 @@ async function main() {
     const backingEvents = config.mode === 'backing'
       ? buildBackingEvents(melodyEvents, config.theme, config.bpm, config.backing, config.growthStyle)
       : [];
+    const stemGroups: StemGroups = {
+      melody: melodyEvents,
+      bass: backingEvents.filter((e) => e.channel === 1),
+      drums: backingEvents.filter((e) => e.channel === 9),
+    };
     const mergedEvents = [...melodyEvents, ...backingEvents].sort((a, b) => a.startMs - b.startMs);
     const playbackEvents = applyTimingFeel(mergedEvents, config.bpm, config.timingFeel, config.timingAmount);
 
@@ -382,6 +419,7 @@ async function main() {
     logKV('Growth:', config.growthStyle);
     logKV('Duration:', `${config.durationStretch}x`);
     logKV('Timing:', `${config.timingFeel} (${config.timingAmount})`);
+    logKV('Export stems:', config.exportStems ? 'on' : 'off');
     if (config.mode === 'backing') {
       logKV('Backing:', `drums ${config.backing.drums ? 'on' : 'off'}, bass ${config.backing.bass ? 'on' : 'off'}, metronome ${config.backing.metronome}`);
       logKV('Drum FX:', `clap ${config.backing.clap ? 'on' : 'off'}, open hat ${config.backing.openHat ? 'on' : 'off'}, perc ${config.backing.perc ? 'on' : 'off'}`);
@@ -407,6 +445,8 @@ async function main() {
         exportMidiFlag,
         config.openAfterExport,
         config.exportAudio,
+        config.exportStems,
+        stemGroups,
         './src/assets/cover.png',
         fxSettings,
       );
@@ -432,6 +472,8 @@ async function main() {
         undefined,
         config.openAfterExport,
         config.exportAudio,
+        config.exportStems,
+        stemGroups,
         './src/assets/cover.png',
         fxSettings,
       );
@@ -445,6 +487,8 @@ async function main() {
       undefined,
       config.openAfterExport,
       config.exportAudio,
+      config.exportStems,
+      stemGroups,
       './src/assets/cover.png',
       fxSettings,
     );
