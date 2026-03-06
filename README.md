@@ -17,47 +17,47 @@ Copy/paste one:
 
 1. Dark grime lead
 ```bash
-npm run note -- --no-interactive --provider=mock --instrument=lead --fx=grime --decay=long --theme="dark industrial pulse" --length=16 --bpm=130 --seed-source=manual --seed=60
+npm run note -- --no-interactive --provider=mock --instrument=lead --fx=grime --decay=long --theme="dark industrial pulse" --length=16 --bpm=130 --seed-source=manual --seed=60 --export-midi=./exports/template-01-dark-grime.mid --export-audio=mp4 --open-after-export=finder
 ```
 
 2. Techno bass drive
 ```bash
-npm run note -- --no-interactive --provider=mock --instrument=bass --fx=punch --decay=tight --theme="minimal techno groove" --length=16 --bpm=132 --seed-source=manual --seed=48
+npm run note -- --no-interactive --provider=mock --instrument=bass --fx=punch --decay=tight --theme="minimal techno groove" --length=16 --bpm=132 --seed-source=manual --seed=48 --export-midi=./exports/template-02-techno-bass.mid --export-audio=mp4 --open-after-export=finder
 ```
 
 3. Lush ambient pad
 ```bash
-npm run note -- --no-interactive --provider=mock --instrument=pad --fx=lush --decay=long --theme="ambient cinematic" --length=24 --bpm=96 --seed-source=manual --seed=52
+npm run note -- --no-interactive --provider=mock --instrument=pad --fx=lush --decay=long --theme="ambient cinematic" --length=24 --bpm=96 --seed-source=manual --seed=52 --export-midi=./exports/template-03-lush-ambient.mid --export-audio=mp4 --open-after-export=finder
 ```
 
 4. Retro synthwave keys
 ```bash
-npm run note -- --no-interactive --provider=mock --instrument=keys --fx=dark --decay=balanced --theme="synthwave retro neon" --length=16 --bpm=118 --seed-source=manual --seed=64
+npm run note -- --no-interactive --provider=mock --instrument=keys --fx=dark --decay=balanced --theme="synthwave retro neon" --length=16 --bpm=118 --seed-source=manual --seed=64 --export-midi=./exports/template-04-synthwave-keys.mid --export-audio=mp4 --open-after-export=finder
 ```
 
 5. Trap lead sparse
 ```bash
-npm run note -- --no-interactive --provider=mock --instrument=lead --fx=punch --decay=tight --theme="trap melodic lead" --length=12 --bpm=145 --seed-source=manual --seed=57
+npm run note -- --no-interactive --provider=mock --instrument=lead --fx=punch --decay=tight --theme="trap melodic lead" --length=12 --bpm=145 --seed-source=manual --seed=57 --export-midi=./exports/template-05-trap-lead.mid --export-audio=mp4 --open-after-export=finder
 ```
 
 6. House keys groove
 ```bash
-npm run note -- --no-interactive --provider=mock --instrument=keys --fx=clean --decay=balanced --theme="melodic house uplifting" --length=16 --bpm=124 --seed-source=manual --seed=62
+npm run note -- --no-interactive --provider=mock --instrument=keys --fx=clean --decay=balanced --theme="melodic house uplifting" --length=16 --bpm=124 --seed-source=manual --seed=62 --export-midi=./exports/template-06-house-keys.mid --export-audio=mp4 --open-after-export=finder
 ```
 
 7. Neo-soul keys smooth
 ```bash
-npm run note -- --no-interactive --provider=mock --instrument=keys --fx=clean --decay=long --theme="jazz neo-soul phrasing" --length=16 --bpm=92 --seed-source=manual --seed=65
+npm run note -- --no-interactive --provider=mock --instrument=keys --fx=clean --decay=long --theme="jazz neo-soul phrasing" --length=16 --bpm=92 --seed-source=manual --seed=65 --export-midi=./exports/template-07-neo-soul.mid --export-audio=mp4 --open-after-export=finder
 ```
 
 8. Industrial drums
 ```bash
-npm run note -- --no-interactive --provider=mock --instrument=drums --fx=grime --decay=tight --theme="dark industrial pulse" --length=16 --bpm=136 --seed-source=manual --seed=60
+npm run note -- --no-interactive --provider=mock --instrument=drums --fx=grime --decay=tight --theme="dark industrial pulse" --length=16 --bpm=136 --seed-source=manual --seed=60 --export-midi=./exports/template-08-industrial-drums.mid --export-audio=mp4 --open-after-export=finder
 ```
 
 9. Lo-fi chill line
 ```bash
-npm run note -- --no-interactive --provider=mock --instrument=keys --fx=dark --decay=balanced --theme="lofi chillhop" --length=16 --bpm=88 --seed-source=manual --seed=58
+npm run note -- --no-interactive --provider=mock --instrument=keys --fx=dark --decay=balanced --theme="lofi chillhop" --length=16 --bpm=88 --seed-source=manual --seed=58 --export-midi=./exports/template-09-lofi.mid --export-audio=mp4 --open-after-export=finder
 ```
 
 10. Export-ready MP4 run
