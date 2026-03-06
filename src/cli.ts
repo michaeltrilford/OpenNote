@@ -8,6 +8,7 @@ import type {
   ModRate,
   ModTarget,
   PitchRange,
+  TimingFeel,
 } from './arrangement';
 import type { DecayStyle, FxPresetName } from './fx';
 import type { ProviderName } from './providers/factory';
@@ -27,6 +28,8 @@ export type CliConfig = {
   modTarget: ModTarget;
   growthStyle: GrowthStyle;
   durationStretch: number;
+  timingFeel: TimingFeel;
+  timingAmount: number;
   backing: BackingControls;
   theme: string;
   length: number;
@@ -202,6 +205,8 @@ function surprisePreset(theme: string): {
   modTarget: ModTarget;
   growthStyle: GrowthStyle;
   durationStretch: number;
+  timingFeel: TimingFeel;
+  timingAmount: number;
   backing: BackingControls;
 } {
   const t = theme.toLowerCase();
@@ -241,6 +246,8 @@ function surprisePreset(theme: string): {
   const modTarget = pickOne<ModTarget>(['velocity', 'duration', 'pitch']);
   const growthStyle: GrowthStyle = Math.random() < 0.65 ? 'build' : 'flat';
   const durationStretch = pickOne([1, 1.25, 1.5, 2]);
+  const timingFeel = pickOne<TimingFeel>(['tight', 'human', 'offbeat', 'loose']);
+  const timingAmount = timingFeel === 'tight' ? 0 : Math.floor(Math.random() * 56);
 
   const backing: BackingControls = mode === 'backing'
     ? {
@@ -281,6 +288,8 @@ function surprisePreset(theme: string): {
     modTarget,
     growthStyle,
     durationStretch,
+    timingFeel,
+    timingAmount,
     backing,
   };
 }
@@ -341,6 +350,13 @@ const DURATION_STRETCH_OPTIONS: Option<number>[] = [
   { value: 1.5, label: '1.5x', help: 'Longer sustained notes.' },
   { value: 2, label: '2.0x', help: 'Much longer phrasing.' },
   { value: 3, label: '3.0x', help: 'Extended ambient feel.' },
+];
+
+const TIMING_FEEL_OPTIONS: Option<TimingFeel>[] = [
+  { value: 'tight', label: 'Tight', help: 'Locked to grid feel.' },
+  { value: 'human', label: 'Human', help: 'Subtle micro-timing drift.' },
+  { value: 'offbeat', label: 'Offbeat', help: 'Intentional push/pull syncopation.' },
+  { value: 'loose', label: 'Loose', help: 'Wider unquantized timing.' },
 ];
 
 const GATE_OPTIONS: Option<GateStyle>[] = [
@@ -663,6 +679,8 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         modTarget: picked.modTarget,
         growthStyle: picked.growthStyle,
         durationStretch: picked.durationStretch,
+        timingFeel: picked.timingFeel,
+        timingAmount: picked.timingAmount,
         backing: picked.backing,
         theme,
         length: surpriseLength(),
@@ -726,6 +744,8 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         modTarget: 'velocity',
         growthStyle: 'flat',
         durationStretch: 1.25,
+        timingFeel: 'tight',
+        timingAmount: 0,
         backing: {
           drums: false,
           bass: false,
@@ -817,6 +837,8 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
     let modTarget = defaults.modTarget;
     let growthStyle = defaults.growthStyle;
     let durationStretch = defaults.durationStretch;
+    let timingFeel = defaults.timingFeel;
+    let timingAmount = defaults.timingAmount;
     let backing: BackingControls = mode === 'backing'
       ? { ...defaults.backing }
       : {
@@ -941,6 +963,30 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         default: defaults.durationStretch,
         theme: inquirerTheme,
       })) as number;
+
+      timingFeel = (await selectPrompt({
+        message: 'Timing feel',
+        choices: TIMING_FEEL_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: defaults.timingFeel,
+        theme: inquirerTheme,
+      })) as TimingFeel;
+
+      const timingAmountRaw = await inputPrompt({
+        message: 'Timing amount (0..100)',
+        default: String(defaults.timingAmount),
+        validate: (value: string) => {
+          const parsed = Number.parseInt(value, 10);
+          if (!Number.isFinite(parsed)) return 'Enter a number';
+          if (parsed < 0 || parsed > 100) return 'Must be 0..100';
+          return true;
+        },
+        theme: inquirerTheme,
+      });
+      timingAmount = asBoundedInt(timingAmountRaw, defaults.timingAmount, 0, 100);
 
       if (mode === 'backing') {
         section('9) Backing', 'Enable drums/bass and shape groove behavior.');
@@ -1139,6 +1185,8 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       modTarget,
       growthStyle,
       durationStretch,
+      timingFeel,
+      timingAmount,
       backing,
       theme,
       length,
@@ -1162,6 +1210,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
     console.log(color(`Modulate:   ${config.modRate} depth ${config.modDepth} target ${config.modTarget}`, `${c.dim}${palette.soft}`));
     console.log(color(`Growth:     ${config.growthStyle}`, `${c.dim}${palette.soft}`));
     console.log(color(`Duration:   ${config.durationStretch}x`, `${c.dim}${palette.soft}`));
+    console.log(color(`Timing:     ${config.timingFeel} (${config.timingAmount})`, `${c.dim}${palette.soft}`));
     if (config.mode === 'backing') {
       console.log(
         color(

@@ -7,6 +7,7 @@ export type ModRate = 'off' | 'slow' | 'med' | 'fast';
 export type ModTarget = 'velocity' | 'duration' | 'pitch';
 export type MetronomeMode = 'off' | 'count-in' | 'always';
 export type GrowthStyle = 'flat' | 'build';
+export type TimingFeel = 'tight' | 'human' | 'offbeat' | 'loose';
 
 export type NoteEvent = {
   pitch: number;
@@ -185,6 +186,49 @@ export function sequenceToEvents(sequence: GeneratedNote[], channel: number): No
     t += Math.max(35, Math.round(n.durationMs));
   }
   return out;
+}
+
+export function applyTimingFeel(
+  events: NoteEvent[],
+  bpm: number,
+  feel: TimingFeel,
+  amount: number,
+): NoteEvent[] {
+  if (feel === 'tight' || amount <= 0 || events.length === 0) return events;
+  const beatMs = 60000 / Math.max(1, bpm);
+  const clampedAmount = clamp(amount, 0, 100) / 100;
+  const maxShiftMs = feel === 'human'
+    ? beatMs * 0.05 * clampedAmount
+    : feel === 'offbeat'
+      ? beatMs * 0.18 * clampedAmount
+      : beatMs * 0.12 * clampedAmount;
+
+  const shifted = events.map((e, i) => {
+    if (e.channel === 9 && feel === 'offbeat') {
+      // Keep downbeat kicks in place; move hats/perc around them.
+      const isKick = e.pitch === 36 || e.pitch === 35;
+      if (isKick) return { ...e };
+    }
+
+    let delta = 0;
+    if (feel === 'human') {
+      delta = (Math.random() * 2 - 1) * maxShiftMs;
+    } else if (feel === 'offbeat') {
+      const dir = i % 2 === 0 ? 1 : -1;
+      delta = dir * maxShiftMs;
+    } else {
+      // loose: mixed push/pull with slightly stronger random.
+      const dir = i % 3 === 0 ? 1 : -1;
+      delta = dir * maxShiftMs * 0.6 + (Math.random() * 2 - 1) * maxShiftMs * 0.6;
+    }
+
+    return {
+      ...e,
+      startMs: Math.max(0, Math.round(e.startMs + delta)),
+    };
+  });
+
+  return shifted.sort((a, b) => a.startMs - b.startMs);
 }
 
 function pickStyle(theme: string): 'techno' | 'trap' | 'ambient' | 'other' {

@@ -12,6 +12,7 @@ The format is based on Keep a Changelog, and this project follows Semantic Versi
 - Growth control (`flat|build`) to shape energy progression over time.
 - Duration stretch control (`1..4x`) to create longer phrases.
 - Drum backing expansions: clap, open hat, and perc toggles.
+- Timing feel control (`tight|human|offbeat|loose`) with amount (`0..100`).
 
 ### Changed
 - Drum rendering improved for clearer hat/percussion output in exports.

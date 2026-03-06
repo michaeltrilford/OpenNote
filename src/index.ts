@@ -4,6 +4,7 @@ import { exportSequenceToMidi } from './exportMidi';
 import { exportSequenceToWav, exportWavToMp3, exportWavToMp4, isFfmpegMissing } from './exportAudio';
 import {
   applyGrowthAndDuration,
+  applyTimingFeel,
   buildBackingEvents,
   sequenceToEvents,
   transformMelody,
@@ -14,6 +15,7 @@ import {
   type ModTarget,
   type NoteEvent,
   type PitchRange,
+  type TimingFeel,
 } from './arrangement';
 import { applyFxToSequence, buildFxSettings, type DecayStyle, type FxPresetName, type FxSettings } from './fx';
 import { applyInstrumentProfile, getInstrumentProfile, type InstrumentName } from './instrument';
@@ -235,6 +237,8 @@ Flags:
   --mod-target=velocity|duration|pitch
   --growth=flat|build
   --duration-stretch=1..4
+  --timing-feel=tight|human|offbeat|loose
+  --timing-amount=0..100
   --backing-drums=true|false
   --backing-bass=true|false
   --backing-clap=true|false
@@ -308,6 +312,8 @@ async function main() {
     modTarget: arg('mod-target', 'velocity') as ModTarget,
     growthStyle: arg('growth', 'flat') as GrowthStyle,
     durationStretch: floatArg('duration-stretch', 1, 1, 4),
+    timingFeel: arg('timing-feel', 'tight') as TimingFeel,
+    timingAmount: intArg('timing-amount', 0, 0, 100),
     backing,
     theme: arg('theme', 'dark ambient techno'),
     length: intArg('length', 16, 1, 512),
@@ -362,7 +368,8 @@ async function main() {
     const backingEvents = config.mode === 'backing'
       ? buildBackingEvents(melodyEvents, config.theme, config.bpm, config.backing, config.growthStyle)
       : [];
-    const playbackEvents = [...melodyEvents, ...backingEvents].sort((a, b) => a.startMs - b.startMs);
+    const mergedEvents = [...melodyEvents, ...backingEvents].sort((a, b) => a.startMs - b.startMs);
+    const playbackEvents = applyTimingFeel(mergedEvents, config.bpm, config.timingFeel, config.timingAmount);
 
     console.log(color('Session', `${c.bold}${palette.primary}`));
     logKV('Provider:', config.provider);
@@ -374,6 +381,7 @@ async function main() {
     logKV('Modulate:', `${config.modRate} depth ${config.modDepth} target ${config.modTarget}`);
     logKV('Growth:', config.growthStyle);
     logKV('Duration:', `${config.durationStretch}x`);
+    logKV('Timing:', `${config.timingFeel} (${config.timingAmount})`);
     if (config.mode === 'backing') {
       logKV('Backing:', `drums ${config.backing.drums ? 'on' : 'off'}, bass ${config.backing.bass ? 'on' : 'off'}, metronome ${config.backing.metronome}`);
       logKV('Drum FX:', `clap ${config.backing.clap ? 'on' : 'off'}, open hat ${config.backing.openHat ? 'on' : 'off'}, perc ${config.backing.perc ? 'on' : 'off'}`);

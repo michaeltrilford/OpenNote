@@ -67,7 +67,22 @@ npm run note -- --no-interactive --provider=mock --instrument=lead --fx=grime --
 
 11. AI backing (techno drums + bass)
 ```bash
-npm run note -- --no-interactive --provider=mock --mode=backing --instrument=lead --fx=punch --decay=balanced --theme="minimal techno groove" --length=16 --bpm=132 --seed-source=manual --seed=60 --transpose=0 --pitch-range=mid --snap-scale=true --mod-rate=med --mod-depth=25 --mod-target=velocity --backing-drums=true --backing-bass=true --metronome=count-in --swing=18 --gate=balanced --mutate=12 --deviate=10 --export-midi=./exports/template-11-ai-backing.mid --export-audio=mp4 --open-after-export=finder
+npm run note -- --no-interactive --provider=mock --mode=backing --instrument=lead --fx=punch --decay=balanced --theme="minimal techno groove" --length=16 --bpm=132 --seed-source=manual --seed=60 --transpose=0 --pitch-range=mid --snap-scale=true --mod-rate=med --mod-depth=25 --mod-target=velocity --growth=build --duration-stretch=1.5 --timing-feel=offbeat --timing-amount=35 --backing-drums=true --backing-bass=true --backing-clap=true --backing-open-hat=true --backing-perc=true --metronome=count-in --swing=18 --gate=balanced --mutate=12 --deviate=10 --export-midi=./exports/template-11-ai-backing.mid --export-audio=mp4 --open-after-export=finder
+```
+
+12. Ambient growth (long phrases + human timing)
+```bash
+npm run note -- --no-interactive --provider=mock --mode=single --instrument=pad --fx=lush --decay=long --theme="ambient cinematic" --length=24 --bpm=94 --seed-source=manual --seed=52 --growth=build --duration-stretch=2 --timing-feel=human --timing-amount=22 --export-midi=./exports/template-12-ambient-growth.mid --export-audio=mp4 --open-after-export=finder
+```
+
+13. Trap pocket (offbeat hats + clap)
+```bash
+npm run note -- --no-interactive --provider=mock --mode=backing --instrument=lead --fx=grime --decay=tight --theme="trap melodic lead" --length=16 --bpm=145 --seed-source=manual --seed=57 --growth=build --duration-stretch=1 --timing-feel=offbeat --timing-amount=45 --backing-drums=true --backing-bass=true --backing-clap=true --backing-open-hat=true --backing-perc=false --metronome=count-in --swing=10 --gate=tight --mutate=14 --deviate=12 --export-midi=./exports/template-13-trap-pocket.mid --export-audio=mp4 --open-after-export=finder
+```
+
+14. Loose industrial groove (perc heavy)
+```bash
+npm run note -- --no-interactive --provider=mock --mode=backing --instrument=keys --fx=dark --decay=balanced --theme="dark industrial pulse" --length=16 --bpm=132 --seed-source=manual --seed=60 --growth=build --duration-stretch=1.25 --timing-feel=loose --timing-amount=38 --backing-drums=true --backing-bass=false --backing-clap=false --backing-open-hat=true --backing-perc=true --metronome=count-in --swing=14 --gate=balanced --mutate=16 --deviate=15 --export-midi=./exports/template-14-industrial-loose.mid --export-audio=mp4 --open-after-export=finder
 ```
 
 ## Interactive flow
@@ -108,6 +123,8 @@ Advanced-only steps:
 8. Movement
 - `growth` (`flat|build`) for song energy over time
 - `duration stretch` (`1.0x..3.0x`) for longer phrase feel
+- `timing feel` (`tight|human|offbeat|loose`)
+- `timing amount` (`0..100`)
 
 9. Backing controls (only when mode is `backing`)
 - Drums on/off
@@ -177,7 +194,7 @@ npm run note -- --no-interactive --provider=mock --theme="ambient" --length=16 -
 
 With AI backing + groove controls:
 ```bash
-npm run note -- --no-interactive --provider=mock --mode=backing --theme="trap melodic lead" --length=16 --bpm=140 --seed-source=manual --seed=57 --transpose=0 --pitch-range=mid --snap-scale=false --mod-rate=slow --mod-depth=20 --mod-target=velocity --backing-drums=true --backing-bass=false --metronome=count-in --swing=12 --gate=tight --mutate=10 --deviate=8 --export-midi=./exports/take-backing.mid --open-after-export=finder --export-audio=mp4
+npm run note -- --no-interactive --provider=mock --mode=backing --theme="trap melodic lead" --length=16 --bpm=140 --seed-source=manual --seed=57 --transpose=0 --pitch-range=mid --snap-scale=false --mod-rate=slow --mod-depth=20 --mod-target=velocity --growth=build --duration-stretch=1.25 --timing-feel=offbeat --timing-amount=35 --backing-drums=true --backing-bass=false --backing-clap=true --backing-open-hat=true --backing-perc=false --metronome=count-in --swing=12 --gate=tight --mutate=10 --deviate=8 --export-midi=./exports/take-backing.mid --open-after-export=finder --export-audio=mp4
 ```
 
 ## CLI flags
@@ -194,6 +211,8 @@ npm run note -- --no-interactive --provider=mock --mode=backing --theme="trap me
 - `--mod-target=velocity|duration|pitch`
 - `--growth=flat|build`
 - `--duration-stretch=1..4`
+- `--timing-feel=tight|human|offbeat|loose`
+- `--timing-amount=0..100`
 - `--backing-drums=true|false`
 - `--backing-bass=true|false`
 - `--backing-clap=true|false`
