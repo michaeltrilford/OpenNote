@@ -1,9 +1,13 @@
 import type { InstrumentName } from './instrument';
+import type { DecayStyle, FxPresetName } from './fx';
 import type { ProviderName } from './providers/factory';
 
 export type CliConfig = {
   provider: ProviderName;
+  providerAuth: 'none' | 'env' | 'session';
   instrument: InstrumentName;
+  fxPreset: FxPresetName;
+  decayStyle: DecayStyle;
   theme: string;
   length: number;
   bpm: number;
@@ -125,8 +129,23 @@ const INSTRUMENT_OPTIONS: Option<InstrumentName>[] = [
   { value: 'drums', label: 'Drums', help: 'Maps notes to drum hits (channel 10).' },
 ];
 
+const FX_PRESET_OPTIONS: Option<FxPresetName>[] = [
+  { value: 'clean', label: 'Clean', help: 'Minimal coloration.' },
+  { value: 'dark', label: 'Dark', help: 'Darker tone with mild grit.' },
+  { value: 'grime', label: 'Grime', help: 'Heavy drive + crunch.' },
+  { value: 'lush', label: 'Lush', help: 'Wider, wetter ambience.' },
+  { value: 'punch', label: 'Punch', help: 'Tighter attack and impact.' },
+];
+
+const DECAY_OPTIONS: Option<DecayStyle>[] = [
+  { value: 'tight', label: 'Tight', help: 'Shorter decay, plucky feel.' },
+  { value: 'balanced', label: 'Balanced', help: 'Default decay.' },
+  { value: 'long', label: 'Long', help: 'Extended tail/sustain.' },
+];
+
 function recommendedProvider(defaultProvider: ProviderName): ProviderName {
   if (process.env.OPENAI_API_KEY) return 'openai';
+  if (process.env.GEMINI_API_KEY) return 'gemini';
   if (process.env.GROQ_API_KEY) return 'groq';
   if (process.env.XAI_API_KEY) return 'grok';
   if (process.env.ANTHROPIC_API_KEY) return 'claude';
@@ -146,6 +165,13 @@ function providerOptions(): Option<ProviderName>[] {
       help: process.env.OPENAI_API_KEY
         ? 'Configured via OPENAI_API_KEY.'
         : 'Requires OPENAI_API_KEY.',
+    },
+    {
+      value: 'gemini',
+      label: 'Gemini',
+      help: process.env.GEMINI_API_KEY
+        ? 'Configured via GEMINI_API_KEY.'
+        : 'Requires GEMINI_API_KEY.',
     },
     {
       value: 'claude',
@@ -175,9 +201,10 @@ function parseProvider(inputValue: string): ProviderName | null {
   const normalized = inputValue.trim().toLowerCase();
   if (normalized === '1' || normalized === 'mock' || normalized === 'demo') return 'mock';
   if (normalized === '2' || normalized === 'openai' || normalized === 'codex') return 'openai';
-  if (normalized === '3' || normalized === 'claude') return 'claude';
-  if (normalized === '4' || normalized === 'groq') return 'groq';
-  if (normalized === '5' || normalized === 'grok' || normalized === 'xai') return 'grok';
+  if (normalized === '3' || normalized === 'gemini') return 'gemini';
+  if (normalized === '4' || normalized === 'claude') return 'claude';
+  if (normalized === '5' || normalized === 'groq') return 'groq';
+  if (normalized === '6' || normalized === 'grok' || normalized === 'xai') return 'grok';
   return null;
 }
 
@@ -198,31 +225,37 @@ async function ensureProviderCredentials(
     validate?: (value: string) => true | string;
   }) => Promise<string>,
   provider: ProviderName,
-): Promise<boolean> {
+): Promise<{ ok: boolean; auth: 'none' | 'env' | 'session' }> {
   if (provider === 'mock') {
     console.log(color('Using demo mode (no API key needed).', `${c.dim}${palette.soft}`));
-    return true;
+    return { ok: true, auth: 'none' };
   }
 
   if (provider === 'openai' && process.env.OPENAI_API_KEY) {
     console.log(color('OPENAI_API_KEY detected in environment.', `${c.dim}${palette.soft}`));
-    return true;
+    return { ok: true, auth: 'env' };
+  }
+  if (provider === 'gemini' && process.env.GEMINI_API_KEY) {
+    console.log(color('GEMINI_API_KEY detected in environment.', `${c.dim}${palette.soft}`));
+    return { ok: true, auth: 'env' };
   }
   if (provider === 'claude' && process.env.ANTHROPIC_API_KEY) {
     console.log(color('ANTHROPIC_API_KEY detected in environment.', `${c.dim}${palette.soft}`));
-    return true;
+    return { ok: true, auth: 'env' };
   }
   if (provider === 'groq' && process.env.GROQ_API_KEY) {
     console.log(color('GROQ_API_KEY detected in environment.', `${c.dim}${palette.soft}`));
-    return true;
+    return { ok: true, auth: 'env' };
   }
   if (provider === 'grok' && process.env.XAI_API_KEY) {
     console.log(color('XAI_API_KEY detected in environment.', `${c.dim}${palette.soft}`));
-    return true;
+    return { ok: true, auth: 'env' };
   }
 
   const keyName = provider === 'openai'
     ? 'OPENAI_API_KEY'
+    : provider === 'gemini'
+      ? 'GEMINI_API_KEY'
     : provider === 'claude'
       ? 'ANTHROPIC_API_KEY'
       : provider === 'groq'
@@ -237,11 +270,13 @@ async function ensureProviderCredentials(
   const trimmed = key.trim();
   if (!trimmed) {
     console.log(color('No key entered.', c.red));
-    return false;
+    return { ok: false, auth: 'none' };
   }
 
   if (provider === 'openai') {
     process.env.OPENAI_API_KEY = trimmed;
+  } else if (provider === 'gemini') {
+    process.env.GEMINI_API_KEY = trimmed;
   } else if (provider === 'claude') {
     process.env.ANTHROPIC_API_KEY = trimmed;
   } else if (provider === 'groq') {
@@ -250,7 +285,7 @@ async function ensureProviderCredentials(
     process.env.XAI_API_KEY = trimmed;
   }
   console.log(color(`${keyName} received for this session.`, `${c.bold}${palette.primary}`));
-  return true;
+  return { ok: true, auth: 'session' };
 }
 
 async function pickProvider(
@@ -272,35 +307,29 @@ async function pickProvider(
     theme?: unknown;
   }) => Promise<string>,
   fallback: ProviderName,
-): Promise<ProviderName> {
+): Promise<{ provider: ProviderName; auth: 'none' | 'env' | 'session' }> {
   const recommended = recommendedProvider(fallback);
   const options = providerOptions();
-  const selected = await selectPrompt({
-    message: 'Choose AI provider',
-    default: recommended,
-    choices: options.map((option) => ({
-      value: option.value,
-      name: option.label,
-      description: option.help,
-    })),
-    theme: inquirerTheme,
-  });
 
-  const ok = await ensureProviderCredentials(inputPrompt, passwordPrompt, selected);
-  if (!ok) {
-    const manual = await inputPrompt({
-      message: 'Choose provider (mock/openai/claude/groq/grok)',
+  while (true) {
+    const selected = await selectPrompt({
+      message: 'Choose AI provider',
       default: recommended,
-      validate: (value) => (parseProvider(value) ? true : 'Enter mock/openai/claude/groq/grok'),
+      choices: options.map((option) => ({
+        value: option.value,
+        name: option.label,
+        description: option.help,
+      })),
       theme: inquirerTheme,
     });
-    const parsed = parseProvider(manual);
-    if (!parsed) return 'mock';
-    const retried = await ensureProviderCredentials(inputPrompt, passwordPrompt, parsed);
-    if (!retried) return 'mock';
-    return parsed;
+
+    const cred = await ensureProviderCredentials(inputPrompt, passwordPrompt, selected);
+    if (cred.ok) {
+      return { provider: selected, auth: cred.auth };
+    }
+
+    console.log(color('Provider key not set. Choose provider again or select mock mode.', c.red));
   }
-  return selected;
 }
 
 async function pickTheme(
@@ -445,12 +474,14 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
 
   while (true) {
     section('1) Provider', 'Pick model provider (demo mode is easiest to start).');
-    const provider = (await pickProvider(
+    const providerResult = await pickProvider(
       (cfg) => selectPrompt(cfg) as Promise<ProviderName>,
       inputPrompt,
       passwordPrompt,
       defaults.provider,
-    )) as ProviderName;
+    );
+    const provider = providerResult.provider;
+    const providerAuth = providerResult.auth;
 
     section('2) Instrument', 'Choose instrument profile for output mapping.');
     const instrument = (await selectPrompt({
@@ -464,16 +495,39 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       theme: inquirerTheme,
     })) as InstrumentName;
 
-    section('3) Style', 'Choose a preset music category or custom theme.');
+    section('3) FX', 'Choose tone shaping profile and decay behavior.');
+    const fxPreset = (await selectPrompt({
+      message: 'FX preset',
+      choices: FX_PRESET_OPTIONS.map((option) => ({
+        value: option.value,
+        name: option.label,
+        description: option.help,
+      })),
+      default: defaults.fxPreset,
+      theme: inquirerTheme,
+    })) as FxPresetName;
+
+    const decayStyle = (await selectPrompt({
+      message: 'Decay style',
+      choices: DECAY_OPTIONS.map((option) => ({
+        value: option.value,
+        name: option.label,
+        description: option.help,
+      })),
+      default: defaults.decayStyle,
+      theme: inquirerTheme,
+    })) as DecayStyle;
+
+    section('4) Style', 'Choose a preset music category or custom theme.');
     const theme = await pickTheme((cfg) => selectPrompt(cfg) as Promise<string>, inputPrompt, defaults.theme);
-    section('4) Structure', 'Set length and tempo.');
+    section('5) Structure', 'Set length and tempo.');
     const length = await pickLength(
       (cfg) => selectPrompt(cfg) as Promise<number>,
       inputPrompt,
       defaults.length,
     );
     const bpm = await pickBpm((cfg) => selectPrompt(cfg) as Promise<number>, inputPrompt, defaults.bpm);
-    section('5) Input', 'Choose seed note input mode.');
+    section('6) Input', 'Choose seed note input mode.');
     const seedSource = (await selectPrompt({
       message: 'Seed input mode',
       choices: SEED_SOURCE_OPTIONS.map((option) => ({
@@ -503,7 +557,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
 
     const beep = false;
 
-    section('6) Export Open Action', 'What should happen right after MIDI export?');
+    section('7) Export Open Action', 'What should happen right after MIDI export?');
     const openAfterExport = (await selectPrompt({
       message: 'After export',
       choices: OPEN_AFTER_EXPORT_OPTIONS.map((option) => ({
@@ -515,7 +569,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       theme: inquirerTheme,
     })) as 'none' | 'finder' | 'garageband';
 
-    section('7) Export Media Format', 'Optional extra export format when you choose export actions.');
+    section('8) Export Media Format', 'Optional extra export format when you choose export actions.');
     const exportAudio = (await selectPrompt({
       message: 'Export profile',
       choices: EXPORT_AUDIO_OPTIONS.map((option) => ({
@@ -529,7 +583,10 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
 
     const config = {
       provider,
+      providerAuth,
       instrument,
+      fxPreset,
+      decayStyle,
       theme,
       length,
       bpm,
@@ -542,7 +599,10 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
 
     section('Summary');
     console.log(color(`Provider:   ${config.provider}`, `${c.dim}${palette.soft}`));
+    console.log(color(`Auth:       ${config.providerAuth}`, `${c.dim}${palette.soft}`));
     console.log(color(`Instrument: ${config.instrument}`, `${c.dim}${palette.soft}`));
+    console.log(color(`FX preset:  ${config.fxPreset}`, `${c.dim}${palette.soft}`));
+    console.log(color(`Decay:      ${config.decayStyle}`, `${c.dim}${palette.soft}`));
     console.log(color(`Theme:      ${config.theme}`, `${c.dim}${palette.soft}`));
     console.log(color(`Length:     ${config.length} notes`, `${c.dim}${palette.soft}`));
     console.log(color(`BPM:        ${config.bpm}`, `${c.dim}${palette.soft}`));

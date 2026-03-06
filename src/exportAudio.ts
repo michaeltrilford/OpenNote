@@ -2,6 +2,7 @@ import { access, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
+import type { FxSettings } from './fx';
 import type { GeneratedNote } from './types';
 
 const SAMPLE_RATE = 44100;
@@ -18,7 +19,53 @@ function i16(n: number): number {
   return Math.max(-32768, Math.min(32767, Math.round(n)));
 }
 
-function buildWavPcm(sequence: GeneratedNote[]): Buffer {
+function waveSample(type: FxSettings['waveform'], phase: number): number {
+  const s = Math.sin(phase);
+  if (type === 'sine') return s;
+  if (type === 'square') return s >= 0 ? 1 : -1;
+  // saw, normalized [-1..1]
+  return 2 * ((phase / (2 * Math.PI)) % 1) - 1;
+}
+
+function applyPostFx(samples: Float32Array, fx: FxSettings): Float32Array {
+  const out = new Float32Array(samples.length);
+  const driveGain = 1 + fx.drive * 14;
+
+  // bitcrush: quantize + hold
+  const bitDepth = Math.max(4, Math.round(16 - fx.bitcrush * 10));
+  const levels = Math.pow(2, bitDepth - 1);
+  const holdEvery = Math.max(1, Math.round(1 + fx.bitcrush * 14));
+  let held = 0;
+
+  for (let i = 0; i < samples.length; i++) {
+    if (i % holdEvery === 0) {
+      const driven = Math.tanh(samples[i] * driveGain);
+      held = Math.round(driven * levels) / levels;
+    }
+    out[i] = held;
+  }
+
+  const wetMix = Math.max(0, Math.min(1, fx.reverb));
+  if (wetMix <= 0.001) return out;
+
+  // simple feedback delay as lightweight reverb flavor
+  const delaySamples = Math.max(1, Math.round(SAMPLE_RATE * (0.12 + 0.2 * wetMix)));
+  const feedback = 0.2 + 0.45 * wetMix;
+  const wet = new Float32Array(out);
+
+  for (let i = delaySamples; i < wet.length; i++) {
+    wet[i] += wet[i - delaySamples] * feedback;
+  }
+
+  const mixed = new Float32Array(out.length);
+  for (let i = 0; i < mixed.length; i++) {
+    const m = out[i] * (1 - wetMix) + wet[i] * wetMix;
+    mixed[i] = Math.max(-1, Math.min(1, m));
+  }
+  return mixed;
+}
+
+function buildWavPcm(sequence: GeneratedNote[], fx: FxSettings): Buffer {
   const samples: number[] = [];
   for (const note of sequence) {
     const freq = pitchToFrequency(note.pitch);
@@ -28,13 +75,25 @@ function buildWavPcm(sequence: GeneratedNote[]): Buffer {
 
     for (let i = 0; i < count; i++) {
       const t = i / SAMPLE_RATE;
-      const env = Math.exp((-4 * i) / count);
-      const value = Math.sin(2 * Math.PI * freq * t) * amp * env;
+      const phase = 2 * Math.PI * freq * t;
+      const envDecay = 2 + (1 - fx.reverb) * 4;
+      const env = Math.exp((-envDecay * i) / count);
+      const osc = waveSample(fx.waveform, phase);
+      const value = osc * amp * env;
       samples.push(i16(value * 32767));
     }
   }
 
-  const dataSize = samples.length * 2;
+  const floatSamples = new Float32Array(samples.length);
+  for (let i = 0; i < samples.length; i++) floatSamples[i] = samples[i] / 32768;
+  const processed = applyPostFx(floatSamples, fx);
+
+  const pcm = new Int16Array(processed.length);
+  for (let i = 0; i < processed.length; i++) {
+    pcm[i] = i16(processed[i] * 32767);
+  }
+
+  const dataSize = pcm.length * 2;
   const b = Buffer.alloc(44 + dataSize);
   b.write('RIFF', 0);
   b.writeUInt32LE(36 + dataSize, 4);
@@ -50,8 +109,8 @@ function buildWavPcm(sequence: GeneratedNote[]): Buffer {
   b.write('data', 36);
   b.writeUInt32LE(dataSize, 40);
 
-  for (let i = 0; i < samples.length; i++) {
-    b.writeInt16LE(samples[i], 44 + i * 2);
+  for (let i = 0; i < pcm.length; i++) {
+    b.writeInt16LE(pcm[i], 44 + i * 2);
   }
   return b;
 }
@@ -85,10 +144,14 @@ export function isFfmpegMissing(err: unknown): boolean {
   return maybe.code === 'ENOENT';
 }
 
-export async function exportSequenceToWav(sequence: GeneratedNote[], outPath: string): Promise<string> {
+export async function exportSequenceToWav(
+  sequence: GeneratedNote[],
+  outPath: string,
+  fx: FxSettings,
+): Promise<string> {
   const fullPath = resolve(outPath);
   await ensureParent(fullPath);
-  await writeFile(fullPath, buildWavPcm(sequence));
+  await writeFile(fullPath, buildWavPcm(sequence, fx));
   return fullPath;
 }
 

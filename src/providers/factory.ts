@@ -1,11 +1,12 @@
 import type { LLMProvider } from '../types';
 import { ClaudeProvider } from './claudeProvider';
+import { GeminiProvider } from './geminiProvider';
 import { GrokProvider } from './grokProvider';
 import { GroqProvider } from './groqProvider';
 import { MockProvider } from './mockProvider';
 import { OpenAIProvider } from './openaiProvider';
 
-export type ProviderName = 'mock' | 'openai' | 'claude' | 'groq' | 'grok';
+export type ProviderName = 'mock' | 'openai' | 'gemini' | 'claude' | 'groq' | 'grok';
 
 export function buildProvider(name: ProviderName): LLMProvider {
   if (name === 'mock') {
@@ -16,6 +17,12 @@ export function buildProvider(name: ProviderName): LLMProvider {
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) throw new Error('Missing OPENAI_API_KEY');
     return new OpenAIProvider(apiKey, process.env.OPENAI_MODEL || 'gpt-4.1-mini');
+  }
+
+  if (name === 'gemini') {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error('Missing GEMINI_API_KEY');
+    return new GeminiProvider(apiKey, process.env.GEMINI_MODEL || 'gemini-2.0-flash');
   }
 
   if (name === 'groq') {

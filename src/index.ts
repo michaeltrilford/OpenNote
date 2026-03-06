@@ -2,6 +2,7 @@ import { dirname, extname, join, basename } from 'node:path';
 import { unlink } from 'node:fs/promises';
 import { exportSequenceToMidi } from './exportMidi';
 import { exportSequenceToWav, exportWavToMp3, exportWavToMp4, isFfmpegMissing } from './exportAudio';
+import { applyFxToSequence, buildFxSettings, type DecayStyle, type FxPresetName, type FxSettings } from './fx';
 import { applyInstrumentProfile, getInstrumentProfile, type InstrumentName } from './instrument';
 import { promptCliConfig } from './cli';
 import { generateSequence } from './generator';
@@ -125,6 +126,7 @@ async function maybeExportMidi(
   openAfterExport: OpenAfterExport,
   exportAudio: 'none' | 'mp3' | 'mp4',
   coverImagePath: string,
+  fx: FxSettings,
 ): Promise<string | null> {
   const path = explicitPath ?? defaultMidiPath();
   const written = await exportSequenceToMidi(sequence, bpm, path);
@@ -138,7 +140,7 @@ async function maybeExportMidi(
         ? written.slice(0, -ext.length)
         : join(dirname(written), basename(written));
       const wavPath = `${baseNoExt}.__temp.wav`;
-      const writtenWav = await exportSequenceToWav(sequence, wavPath);
+      const writtenWav = await exportSequenceToWav(sequence, wavPath, fx);
 
       if (exportAudio === 'mp3') {
         const mp3Path = `${baseNoExt}.mp3`;
@@ -188,8 +190,10 @@ Non-interactive mode:
   npm run note -- --no-interactive --provider=mock --theme="ambient" --length=16 --bpm=120 --seed=60
 
 Flags:
-  --provider=mock|openai|claude|groq|grok
+  --provider=mock|openai|gemini|claude|groq|grok
   --instrument=lead|bass|pad|keys|drums
+  --fx=clean|dark|grime|lush|punch
+  --decay=tight|balanced|long
   --theme="<style prompt>"
   --length=<notes>
   --bpm=<tempo>
@@ -204,6 +208,7 @@ Flags:
 
 Provider keys:
   OPENAI_API_KEY for openai
+  GEMINI_API_KEY for gemini
   ANTHROPIC_API_KEY for claude
   GROQ_API_KEY for groq
   XAI_API_KEY for grok
@@ -226,7 +231,10 @@ async function main() {
   const exportMidiFlag = process.argv.find((a) => a.startsWith('--export-midi='))?.split('=').slice(1).join('=');
   const defaults = {
     provider: arg('provider', 'mock') as ProviderName,
+    providerAuth: (arg('provider', 'mock') === 'mock' ? 'none' : 'env') as 'none' | 'env' | 'session',
     instrument: arg('instrument', 'lead') as InstrumentName,
+    fxPreset: arg('fx', 'clean') as FxPresetName,
+    decayStyle: arg('decay', 'balanced') as DecayStyle,
     theme: arg('theme', 'dark ambient techno'),
     length: Number(arg('length', '16')),
     bpm: Number(arg('bpm', '120')),
@@ -241,7 +249,10 @@ async function main() {
     ? await promptCliConfig(defaults)
     : {
         provider: defaults.provider,
+        providerAuth: defaults.providerAuth,
         instrument: defaults.instrument,
+        fxPreset: defaults.fxPreset,
+        decayStyle: defaults.decayStyle,
         theme: defaults.theme,
         length: defaults.length,
         bpm: defaults.bpm,
@@ -266,12 +277,16 @@ async function main() {
         bpm: config.bpm,
       }),
     );
-    const instrumentSequence = applyInstrumentProfile(sequence, config.instrument);
+    const fxSettings = buildFxSettings(config.fxPreset, config.decayStyle);
+    const fxSequence = applyFxToSequence(sequence, fxSettings);
+    const instrumentSequence = applyInstrumentProfile(fxSequence, config.instrument);
     const instrumentProfile = getInstrumentProfile(config.instrument);
 
     console.log(color('Session', `${c.bold}${palette.primary}`));
     logKV('Provider:', config.provider);
+    logKV('Auth:', config.providerAuth);
     logKV('Instrument:', `${instrumentProfile.label} (ch ${instrumentProfile.midiChannel + 1}, program ${instrumentProfile.program})`);
+    logKV('FX:', `${config.fxPreset} / ${config.decayStyle}`);
     logKV('Theme:', config.theme);
     logKV('Seed source:', config.seedSource);
     logKV('Seed pitch:', seedPitch);
@@ -291,6 +306,7 @@ async function main() {
         config.openAfterExport,
         config.exportAudio,
         './src/assets/cover.png',
+        fxSettings,
       );
       break;
     }
@@ -315,6 +331,7 @@ async function main() {
         config.openAfterExport,
         config.exportAudio,
         './src/assets/cover.png',
+        fxSettings,
       );
       keepRunning = false;
       continue;
@@ -327,6 +344,7 @@ async function main() {
       config.openAfterExport,
       config.exportAudio,
       './src/assets/cover.png',
+      fxSettings,
     );
   }
 
