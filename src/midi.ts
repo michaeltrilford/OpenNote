@@ -1,5 +1,6 @@
 import readline from 'node:readline';
 import { createInterface } from 'node:readline/promises';
+import type { MetronomeMode, NoteEvent } from './arrangement';
 import type { InstrumentProfile } from './instrument';
 import type { GeneratedNote } from './types';
 
@@ -15,6 +16,8 @@ type SeedOptions = {
 type PlaybackOptions = {
   beep?: boolean;
   instrument?: InstrumentProfile;
+  metronome?: MetronomeMode;
+  bpm?: number;
 };
 
 const SCALE_OFFSETS = [0, 2, 4, 5, 7, 9, 11, 12];
@@ -159,9 +162,23 @@ export async function waitForSeedNote(options: SeedOptions = {}): Promise<MidiNo
 
 // Replace with real MIDI output to your selected synth/device.
 export async function playSequenceToOutput(
-  sequence: GeneratedNote[],
+  sequence: GeneratedNote[] | NoteEvent[],
   options: PlaybackOptions = {},
 ): Promise<void> {
+  const events: NoteEvent[] = (sequence as NoteEvent[])[0]?.startMs != null
+    ? (sequence as NoteEvent[])
+    : (() => {
+        const out: NoteEvent[] = [];
+        let t = 0;
+        for (const n of sequence as GeneratedNote[]) {
+          out.push({ pitch: n.pitch, velocity: n.velocity, durationMs: n.durationMs, startMs: t, channel: 0 });
+          t += n.durationMs;
+        }
+        return out;
+      })();
+
+  events.sort((a, b) => a.startMs - b.startMs);
+
   if (options.instrument) {
     console.log(
       color(
@@ -170,10 +187,32 @@ export async function playSequenceToOutput(
       ),
     );
   }
-  for (const note of sequence) {
+
+  const beatMs = 60000 / Math.max(1, options.bpm ?? 120);
+  if (options.metronome === 'count-in' || options.metronome === 'always') {
+    for (let i = 0; i < 4; i++) {
+      console.log(color(`METRONOME ${i + 1}`, palette.soft));
+      if (options.beep) process.stdout.write('\x07');
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, beatMs));
+    }
+  }
+
+  let prevStart = 0;
+  for (const note of events) {
+    const wait = Math.max(0, note.startMs - prevStart);
+    if (wait > 0) {
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, wait));
+    }
     console.log(color(`MIDI OUT NOTE_ON ${note.pitch} ${note.velocity}`, palette.primary));
     if (options.beep) process.stdout.write('\x07');
+    if (options.metronome === 'always' && note.startMs % Math.max(1, Math.round(beatMs)) < 24) {
+      console.log(color('METRONOME', palette.soft));
+    }
+    // eslint-disable-next-line no-await-in-loop
     await new Promise((r) => setTimeout(r, note.durationMs));
     console.log(color(`MIDI OUT NOTE_OFF ${note.pitch}`, palette.primary));
+    prevStart = note.startMs;
   }
 }

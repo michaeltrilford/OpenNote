@@ -1,13 +1,33 @@
 import type { InstrumentName } from './instrument';
+import type {
+  BackingControls,
+  GenerationMode,
+  GateStyle,
+  GrowthStyle,
+  MetronomeMode,
+  ModRate,
+  ModTarget,
+  PitchRange,
+} from './arrangement';
 import type { DecayStyle, FxPresetName } from './fx';
 import type { ProviderName } from './providers/factory';
 
 export type CliConfig = {
   provider: ProviderName;
   providerAuth: 'none' | 'env' | 'session';
+  mode: GenerationMode;
   instrument: InstrumentName;
   fxPreset: FxPresetName;
   decayStyle: DecayStyle;
+  transpose: number;
+  pitchRange: PitchRange;
+  snapScale: boolean;
+  modRate: ModRate;
+  modDepth: number;
+  modTarget: ModTarget;
+  growthStyle: GrowthStyle;
+  durationStretch: number;
+  backing: BackingControls;
   theme: string;
   length: number;
   bpm: number;
@@ -54,11 +74,22 @@ function asMidiPitch(value: string, fallback: number): number {
   return Math.max(0, Math.min(127, parsed));
 }
 
+function asBoundedInt(value: string, fallback: number, min: number, max: number): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, parsed));
+}
+
 type Option<T> = {
   value: T;
   label: string;
   help?: string;
 };
+
+type SelectPromptFn = (cfg: any) => Promise<any>;
+type InputPromptFn = (cfg: any) => Promise<string>;
+type PasswordPromptFn = (cfg: any) => Promise<string>;
+type SetupPath = 'basic' | 'surprise' | 'advanced';
 
 const inquirerTheme = {
   icon: {
@@ -116,9 +147,9 @@ const OPEN_AFTER_EXPORT_OPTIONS: Option<'none' | 'finder' | 'garageband'>[] = [
 ];
 
 const EXPORT_AUDIO_OPTIONS: Option<'none' | 'mp3' | 'mp4'>[] = [
-  { value: 'none', label: 'MIDI only (.mid)', help: 'No extra audio/video export.' },
-  { value: 'mp3', label: 'MIDI + MP3', help: 'Render audio from generated notes.' },
   { value: 'mp4', label: 'MIDI + MP4', help: 'Render video with static cover image + audio.' },
+  { value: 'mp3', label: 'MIDI + MP3', help: 'Render audio from generated notes.' },
+  { value: 'none', label: 'MIDI only (.mid)', help: 'No extra audio/video export.' },
 ];
 
 const INSTRUMENT_OPTIONS: Option<InstrumentName>[] = [
@@ -143,6 +174,187 @@ const DECAY_OPTIONS: Option<DecayStyle>[] = [
   { value: 'long', label: 'Long', help: 'Extended tail/sustain.' },
 ];
 
+const MODE_OPTIONS: Option<GenerationMode>[] = [
+  { value: 'single', label: 'Single Track', help: 'Current flow, melody only.' },
+  { value: 'backing', label: 'AI Backing', help: 'Reveal drums/bass/groove controls.' },
+];
+
+const SETUP_PATH_OPTIONS: Option<SetupPath>[] = [
+  { value: 'basic', label: 'Basic', help: 'Fast setup using default pitch/mod/backing values.' },
+  { value: 'surprise', label: 'Surprise me', help: 'Auto-pick presets and controls from your style.' },
+  { value: 'advanced', label: 'Advanced', help: 'Full control over pitch, modulation, and groove.' },
+];
+
+function pickOne<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)];
+}
+
+function surprisePreset(theme: string): {
+  mode: GenerationMode;
+  instrument: InstrumentName;
+  fxPreset: FxPresetName;
+  decayStyle: DecayStyle;
+  transpose: number;
+  pitchRange: PitchRange;
+  snapScale: boolean;
+  modRate: ModRate;
+  modDepth: number;
+  modTarget: ModTarget;
+  growthStyle: GrowthStyle;
+  durationStretch: number;
+  backing: BackingControls;
+} {
+  const t = theme.toLowerCase();
+  const isAmbient = t.includes('ambient') || t.includes('cinematic');
+  const isTrap = t.includes('trap');
+  const isTech = t.includes('techno') || t.includes('house') || t.includes('industrial');
+  const mode: GenerationMode = isAmbient ? 'single' : Math.random() < 0.6 ? 'backing' : 'single';
+  const instrument = isAmbient
+    ? pickOne<InstrumentName>(['pad', 'keys', 'lead'])
+    : isTrap
+      ? pickOne<InstrumentName>(['lead', 'bass', 'keys'])
+      : isTech
+        ? pickOne<InstrumentName>(['lead', 'keys', 'bass'])
+        : pickOne<InstrumentName>(['lead', 'keys', 'pad', 'bass']);
+  const fxPreset = isAmbient
+    ? pickOne<FxPresetName>(['lush', 'dark', 'clean'])
+    : isTrap
+      ? pickOne<FxPresetName>(['grime', 'punch', 'dark'])
+      : isTech
+        ? pickOne<FxPresetName>(['punch', 'dark', 'grime'])
+        : pickOne<FxPresetName>(['clean', 'dark', 'punch', 'lush']);
+  const decayStyle = isAmbient
+    ? pickOne<DecayStyle>(['long', 'balanced'])
+    : isTrap
+      ? pickOne<DecayStyle>(['tight', 'balanced'])
+      : pickOne<DecayStyle>(['balanced', 'tight', 'long']);
+
+  const transpose = Math.floor(Math.random() * 11) - 5;
+  const pitchRange = instrument === 'bass'
+    ? 'low'
+    : instrument === 'pad'
+      ? pickOne<PitchRange>(['mid', 'high'])
+      : pickOne<PitchRange>(['low', 'mid', 'high']);
+  const snapScale = Math.random() < (isTrap ? 0.4 : 0.7);
+  const modRate = pickOne<ModRate>(['off', 'slow', 'med', 'fast']);
+  const modDepth = modRate === 'off' ? 0 : Math.floor(Math.random() * 51);
+  const modTarget = pickOne<ModTarget>(['velocity', 'duration', 'pitch']);
+  const growthStyle: GrowthStyle = Math.random() < 0.65 ? 'build' : 'flat';
+  const durationStretch = pickOne([1, 1.25, 1.5, 2]);
+
+  const backing: BackingControls = mode === 'backing'
+    ? {
+        drums: true,
+        bass: Math.random() < 0.7,
+        clap: Math.random() < 0.6,
+        openHat: Math.random() < 0.55,
+        perc: Math.random() < 0.45,
+        metronome: Math.random() < 0.5 ? 'count-in' : 'off',
+        swing: isTech ? Math.floor(Math.random() * 24) : Math.floor(Math.random() * 16),
+        gate: pickOne<GateStyle>(['tight', 'balanced', 'long']),
+        mutate: Math.floor(Math.random() * 22),
+        deviate: Math.floor(Math.random() * 20),
+      }
+    : {
+        drums: false,
+        bass: false,
+        clap: false,
+        openHat: false,
+        perc: false,
+        metronome: 'off',
+        swing: 0,
+        gate: 'balanced',
+        mutate: 0,
+        deviate: 0,
+      };
+
+  return {
+    mode,
+    instrument,
+    fxPreset,
+    decayStyle,
+    transpose,
+    pitchRange,
+    snapScale,
+    modRate,
+    modDepth,
+    modTarget,
+    growthStyle,
+    durationStretch,
+    backing,
+  };
+}
+
+function surpriseTheme(): string {
+  const options = THEME_OPTIONS.filter((opt) => opt.value !== '__custom__').map((opt) => opt.value);
+  return pickOne(options);
+}
+
+function surpriseLength(): number {
+  return pickOne([8, 16, 16, 32]);
+}
+
+function surpriseBpm(theme: string): number {
+  const t = theme.toLowerCase();
+  if (t.includes('ambient') || t.includes('cinematic')) return pickOne([82, 90, 96, 104]);
+  if (t.includes('trap')) return pickOne([132, 140, 148]);
+  if (t.includes('techno') || t.includes('house') || t.includes('industrial')) return pickOne([122, 128, 132, 136]);
+  return pickOne([90, 100, 110, 120, 128]);
+}
+
+function surpriseSeed(): number {
+  return 48 + Math.floor(Math.random() * 25);
+}
+
+const RANGE_OPTIONS: Option<PitchRange>[] = [
+  { value: 'low', label: 'Low', help: 'Darker lower register.' },
+  { value: 'mid', label: 'Mid', help: 'Balanced melodic register.' },
+  { value: 'high', label: 'High', help: 'Brighter upper register.' },
+];
+
+const TRANSPOSE_AMOUNT_OPTIONS: Option<number>[] = Array.from({ length: 12 }, (_, idx) => {
+  const value = idx + 1;
+  return { value, label: String(value), help: `${value} semitone${value === 1 ? '' : 's'}` };
+});
+
+const MOD_RATE_OPTIONS: Option<ModRate>[] = [
+  { value: 'off', label: 'Off', help: 'No modulation.' },
+  { value: 'slow', label: 'Slow', help: 'Gradual movement.' },
+  { value: 'med', label: 'Medium', help: 'Moderate movement.' },
+  { value: 'fast', label: 'Fast', help: 'Rapid movement.' },
+];
+
+const MOD_TARGET_OPTIONS: Option<ModTarget>[] = [
+  { value: 'velocity', label: 'Velocity', help: 'Accent movement.' },
+  { value: 'duration', label: 'Duration', help: 'Gate movement.' },
+  { value: 'pitch', label: 'Pitch', help: 'Pitch movement.' },
+];
+
+const GROWTH_OPTIONS: Option<GrowthStyle>[] = [
+  { value: 'flat', label: 'Flat', help: 'Keep energy level steady.' },
+  { value: 'build', label: 'Build', help: 'Grow intensity over time.' },
+];
+
+const DURATION_STRETCH_OPTIONS: Option<number>[] = [
+  { value: 1, label: '1.0x', help: 'Original duration feel.' },
+  { value: 1.25, label: '1.25x', help: 'Slightly longer notes.' },
+  { value: 1.5, label: '1.5x', help: 'Longer sustained notes.' },
+  { value: 2, label: '2.0x', help: 'Much longer phrasing.' },
+  { value: 3, label: '3.0x', help: 'Extended ambient feel.' },
+];
+
+const GATE_OPTIONS: Option<GateStyle>[] = [
+  { value: 'tight', label: 'Tight', help: 'Shorter note gates.' },
+  { value: 'balanced', label: 'Balanced', help: 'Neutral gates.' },
+  { value: 'long', label: 'Long', help: 'Longer gates.' },
+];
+
+const METRONOME_OPTIONS: Option<MetronomeMode>[] = [
+  { value: 'off', label: 'Off', help: 'No click.' },
+  { value: 'count-in', label: 'Count-in', help: '4-beat count before playback.' },
+  { value: 'always', label: 'Always', help: 'Click during playback.' },
+];
+
 function recommendedProvider(defaultProvider: ProviderName): ProviderName {
   if (process.env.OPENAI_API_KEY) return 'openai';
   if (process.env.GEMINI_API_KEY) return 'gemini';
@@ -156,7 +368,7 @@ function providerOptions(): Option<ProviderName>[] {
   return [
     {
       value: 'mock',
-      label: 'Demo mode (Mock)',
+      label: 'Demo mode',
       help: 'No API key needed. Best for first run.',
     },
     {
@@ -215,15 +427,8 @@ function section(title: string, subtitle?: string): void {
 }
 
 async function ensureProviderCredentials(
-  inputPrompt: (cfg: {
-    message: string;
-    default?: string;
-    validate?: (value: string) => true | string;
-  }) => Promise<string>,
-  passwordPrompt: (cfg: {
-    message: string;
-    validate?: (value: string) => true | string;
-  }) => Promise<string>,
+  inputPrompt: InputPromptFn,
+  passwordPrompt: PasswordPromptFn,
   provider: ProviderName,
 ): Promise<{ ok: boolean; auth: 'none' | 'env' | 'session' }> {
   if (provider === 'mock') {
@@ -265,7 +470,7 @@ async function ensureProviderCredentials(
   console.log(color('Paste key for this session (not saved to disk).', c.dim));
   const key = await passwordPrompt({
     message: `${keyName}`,
-    validate: (value) => (value.trim() ? true : 'Key is required'),
+    validate: (value: string) => (value.trim() ? true : 'Key is required'),
   });
   const trimmed = key.trim();
   if (!trimmed) {
@@ -289,23 +494,9 @@ async function ensureProviderCredentials(
 }
 
 async function pickProvider(
-  selectPrompt: (cfg: {
-    message: string;
-    default?: ProviderName;
-    choices: Array<{ value: ProviderName; name: string; description?: string }>;
-    theme?: unknown;
-  }) => Promise<ProviderName>,
-  inputPrompt: (cfg: {
-    message: string;
-    default?: string;
-    validate?: (value: string) => true | string;
-    theme?: unknown;
-  }) => Promise<string>,
-  passwordPrompt: (cfg: {
-    message: string;
-    validate?: (value: string) => true | string;
-    theme?: unknown;
-  }) => Promise<string>,
+  selectPrompt: SelectPromptFn,
+  inputPrompt: InputPromptFn,
+  passwordPrompt: PasswordPromptFn,
   fallback: ProviderName,
 ): Promise<{ provider: ProviderName; auth: 'none' | 'env' | 'session' }> {
   const recommended = recommendedProvider(fallback);
@@ -333,17 +524,8 @@ async function pickProvider(
 }
 
 async function pickTheme(
-  selectPrompt: (cfg: {
-    message: string;
-    choices: Array<{ value: string; name: string; description?: string }>;
-    theme?: unknown;
-  }) => Promise<string>,
-  inputPrompt: (cfg: {
-    message: string;
-    default?: string;
-    validate?: (value: string) => true | string;
-    theme?: unknown;
-  }) => Promise<string>,
+  selectPrompt: SelectPromptFn,
+  inputPrompt: InputPromptFn,
   fallback: string,
 ): Promise<string> {
   const selected = await selectPrompt({
@@ -360,7 +542,7 @@ async function pickTheme(
     const custom = await inputPrompt({
       message: 'Enter custom theme',
       default: fallback,
-      validate: (value) => (value.trim() ? true : 'Theme is required'),
+      validate: (value: string) => (value.trim() ? true : 'Theme is required'),
       theme: inquirerTheme,
     });
     return custom.trim() || fallback;
@@ -369,17 +551,8 @@ async function pickTheme(
 }
 
 async function pickLength(
-  selectPrompt: (cfg: {
-    message: string;
-    choices: Array<{ value: number; name: string; description?: string }>;
-    theme?: unknown;
-  }) => Promise<number>,
-  inputPrompt: (cfg: {
-    message: string;
-    default?: string;
-    validate?: (value: string) => true | string;
-    theme?: unknown;
-  }) => Promise<string>,
+  selectPrompt: SelectPromptFn,
+  inputPrompt: InputPromptFn,
   fallback: number,
 ): Promise<number> {
   const selected = await selectPrompt({
@@ -395,7 +568,7 @@ async function pickLength(
     const custom = await inputPrompt({
       message: 'Custom length in notes',
       default: String(fallback),
-      validate: (value) => (asPositiveInt(value, 0) > 0 ? true : 'Enter a positive number'),
+      validate: (value: string) => (asPositiveInt(value, 0) > 0 ? true : 'Enter a positive number'),
       theme: inquirerTheme,
     });
     return asPositiveInt(custom, fallback);
@@ -404,17 +577,8 @@ async function pickLength(
 }
 
 async function pickBpm(
-  selectPrompt: (cfg: {
-    message: string;
-    choices: Array<{ value: number; name: string; description?: string }>;
-    theme?: unknown;
-  }) => Promise<number>,
-  inputPrompt: (cfg: {
-    message: string;
-    default?: string;
-    validate?: (value: string) => true | string;
-    theme?: unknown;
-  }) => Promise<string>,
+  selectPrompt: SelectPromptFn,
+  inputPrompt: InputPromptFn,
   fallback: number,
 ): Promise<number> {
   const selected = await selectPrompt({
@@ -430,7 +594,7 @@ async function pickBpm(
     const custom = await inputPrompt({
       message: 'Custom BPM',
       default: String(fallback),
-      validate: (value) => (asPositiveInt(value, 0) > 0 ? true : 'Enter a positive number'),
+      validate: (value: string) => (asPositiveInt(value, 0) > 0 ? true : 'Enter a positive number'),
       theme: inquirerTheme,
     });
     return asPositiveInt(custom, fallback);
@@ -443,23 +607,9 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
   console.log(color('Use arrow keys and Enter.', `${c.dim}${palette.soft}`));
   console.log(color('----------------------------------------', `${c.dim}${palette.soft}`));
 
-  let selectPrompt: (cfg: {
-    message: string;
-    default?: string | number;
-    choices: Array<{ value: string | number; name: string; description?: string }>;
-    theme?: unknown;
-  }) => Promise<string | number>;
-  let inputPrompt: (cfg: {
-    message: string;
-    default?: string;
-    validate?: (value: string) => true | string;
-    theme?: unknown;
-  }) => Promise<string>;
-  let passwordPrompt: (cfg: {
-    message: string;
-    validate?: (value: string) => true | string;
-    theme?: unknown;
-  }) => Promise<string>;
+  let selectPrompt: SelectPromptFn;
+  let inputPrompt: InputPromptFn;
+  let passwordPrompt: PasswordPromptFn;
 
   try {
     const inquirer = await import('@inquirer/prompts');
@@ -473,7 +623,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
   }
 
   while (true) {
-    section('1) Provider', 'Pick model provider (demo mode is easiest to start).');
+    section('1) Provider', 'Pick model provider (Demo mode - Quickstart).');
     const providerResult = await pickProvider(
       (cfg) => selectPrompt(cfg) as Promise<ProviderName>,
       inputPrompt,
@@ -483,8 +633,149 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
     const provider = providerResult.provider;
     const providerAuth = providerResult.auth;
 
-    section('2) Instrument', 'Choose instrument profile for output mapping.');
-    const instrument = (await selectPrompt({
+    section('2) Setup Path', 'Choose Basic, Surprise me or Advanced for full audio controls.');
+    const setupPath = (await selectPrompt({
+      message: 'Setup path',
+      choices: SETUP_PATH_OPTIONS.map((option) => ({
+        value: option.value,
+        name: option.label,
+        description: option.help,
+      })),
+      default: 'basic',
+      theme: inquirerTheme,
+    })) as SetupPath;
+
+    if (setupPath === 'surprise') {
+      const theme = surpriseTheme();
+      const picked = surprisePreset(theme);
+      const config: CliConfig = {
+        provider,
+        providerAuth,
+        mode: picked.mode,
+        instrument: picked.instrument,
+        fxPreset: picked.fxPreset,
+        decayStyle: picked.decayStyle,
+        transpose: picked.transpose,
+        pitchRange: picked.pitchRange,
+        snapScale: picked.snapScale,
+        modRate: picked.modRate,
+        modDepth: picked.modDepth,
+        modTarget: picked.modTarget,
+        growthStyle: picked.growthStyle,
+        durationStretch: picked.durationStretch,
+        backing: picked.backing,
+        theme,
+        length: surpriseLength(),
+        bpm: surpriseBpm(theme),
+        seedPitch: surpriseSeed(),
+        seedSource: 'manual',
+        beep: false,
+        openAfterExport: defaults.openAfterExport,
+        exportAudio: defaults.exportAudio === 'none' ? 'mp4' : defaults.exportAudio,
+      };
+
+      section('Surprise Setup', 'Auto-picked configuration. Starting generation now.');
+      console.log(color(`Theme:      ${config.theme}`, `${c.dim}${palette.soft}`));
+      console.log(color(`Mode:       ${config.mode}`, `${c.dim}${palette.soft}`));
+      console.log(color(`Instrument: ${config.instrument}`, `${c.dim}${palette.soft}`));
+      console.log(color(`FX:         ${config.fxPreset} / ${config.decayStyle}`, `${c.dim}${palette.soft}`));
+      console.log(color(`Length/BPM: ${config.length} / ${config.bpm}`, `${c.dim}${palette.soft}`));
+      console.log(color(`Seed pitch: ${config.seedPitch}`, `${c.dim}${palette.soft}`));
+      console.log('');
+      return config;
+    }
+
+    if (setupPath === 'basic') {
+      section('3) Style', 'Choose a preset music category or custom theme.');
+      const theme = await pickTheme((cfg) => selectPrompt(cfg) as Promise<string>, inputPrompt, defaults.theme);
+
+      section('4) Structure', 'Set length and tempo.');
+      const length = await pickLength(
+        (cfg) => selectPrompt(cfg) as Promise<number>,
+        inputPrompt,
+        defaults.length,
+      );
+      const bpm = await pickBpm((cfg) => selectPrompt(cfg) as Promise<number>, inputPrompt, defaults.bpm);
+
+      section('5) Input', 'Basic path uses manual seed input.');
+      const seedRaw = await inputPrompt({
+        message: 'Seed pitch MIDI 0-127',
+        default: String(defaults.seedPitch),
+        validate: (value: string) => {
+          const parsed = Number.parseInt(value, 10);
+          if (!Number.isFinite(parsed)) return 'Enter a number';
+          if (parsed < 0 || parsed > 127) return 'Must be 0..127';
+          return true;
+        },
+        theme: inquirerTheme,
+      });
+      const seedPitch = asMidiPitch(seedRaw.trim(), defaults.seedPitch);
+
+      const config: CliConfig = {
+        provider,
+        providerAuth,
+        mode: 'single',
+        instrument: 'lead',
+        fxPreset: 'clean',
+        decayStyle: 'balanced',
+        transpose: 0,
+        pitchRange: 'mid',
+        snapScale: false,
+        modRate: 'off',
+        modDepth: 0,
+        modTarget: 'velocity',
+        growthStyle: 'flat',
+        durationStretch: 1.25,
+        backing: {
+          drums: false,
+          bass: false,
+          clap: false,
+          openHat: false,
+          perc: false,
+          metronome: 'off',
+          swing: 0,
+          gate: 'balanced',
+          mutate: 0,
+          deviate: 0,
+        },
+        theme,
+        length,
+        bpm,
+        seedPitch,
+        seedSource: 'manual',
+        beep: false,
+        openAfterExport: 'finder',
+        exportAudio: 'mp4',
+      };
+
+      section('Basic Setup', 'Using quick defaults. Starting generation now.');
+      console.log(color(`Theme:      ${config.theme}`, `${c.dim}${palette.soft}`));
+      console.log(color(`Length/BPM: ${config.length} / ${config.bpm}`, `${c.dim}${palette.soft}`));
+      console.log(color(`Seed pitch: ${config.seedPitch}`, `${c.dim}${palette.soft}`));
+      console.log(color(`Export:     ${config.exportAudio} + ${config.openAfterExport}`, `${c.dim}${palette.soft}`));
+      console.log('');
+      return config;
+    }
+
+    let mode = defaults.mode;
+    let instrument = defaults.instrument;
+    let fxPreset = defaults.fxPreset;
+    let decayStyle = defaults.decayStyle;
+
+    section('3) Mode', 'Single track keeps it minimal. AI backing reveals arrangement controls.');
+    mode = (await selectPrompt({
+      message: 'Generation mode',
+      choices: MODE_OPTIONS.map((option) => ({
+        value: option.value,
+        name: option.label,
+        description: option.help,
+      })),
+      default: defaults.mode,
+      theme: inquirerTheme,
+    })) as GenerationMode;
+
+    section('4) Instrument', 'Choose instrument profile for output mapping.');
+    instrument = (await selectPrompt({
       message: 'Instrument',
       choices: INSTRUMENT_OPTIONS.map((option) => ({
         value: option.value,
@@ -495,8 +786,8 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       theme: inquirerTheme,
     })) as InstrumentName;
 
-    section('3) FX', 'Choose tone shaping profile and decay behavior.');
-    const fxPreset = (await selectPrompt({
+    section('5) FX', 'Choose tone shaping profile and decay behavior.');
+    fxPreset = (await selectPrompt({
       message: 'FX preset',
       choices: FX_PRESET_OPTIONS.map((option) => ({
         value: option.value,
@@ -507,7 +798,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       theme: inquirerTheme,
     })) as FxPresetName;
 
-    const decayStyle = (await selectPrompt({
+    decayStyle = (await selectPrompt({
       message: 'Decay style',
       choices: DECAY_OPTIONS.map((option) => ({
         value: option.value,
@@ -518,33 +809,285 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       theme: inquirerTheme,
     })) as DecayStyle;
 
-    section('4) Style', 'Choose a preset music category or custom theme.');
+    let transpose = defaults.transpose;
+    let pitchRange = defaults.pitchRange;
+    let snapScale = defaults.snapScale;
+    let modRate = defaults.modRate;
+    let modDepth = defaults.modDepth;
+    let modTarget = defaults.modTarget;
+    let growthStyle = defaults.growthStyle;
+    let durationStretch = defaults.durationStretch;
+    let backing: BackingControls = mode === 'backing'
+      ? { ...defaults.backing }
+      : {
+          drums: false,
+          bass: false,
+          clap: false,
+          openHat: false,
+          perc: false,
+          metronome: 'off',
+          swing: 0,
+          gate: 'balanced',
+          mutate: 0,
+          deviate: 0,
+        };
+
+    if (setupPath === 'advanced') {
+      section('6) Pitch', 'Transpose and range controls with optional scale snap.');
+      const transposeDirection = (await selectPrompt({
+        message: 'Transpose direction',
+        choices: [
+          { value: 'down', name: 'Down (-)', description: 'Shift pitches lower.' },
+          { value: 'none', name: 'Neutral (0)', description: 'No transpose shift.' },
+          { value: 'up', name: 'Up (+)', description: 'Shift pitches higher.' },
+        ],
+        default: defaults.transpose === 0 ? 'none' : defaults.transpose < 0 ? 'down' : 'up',
+        theme: inquirerTheme,
+      })) as 'down' | 'none' | 'up';
+
+      if (transposeDirection === 'none') {
+        transpose = 0;
+      } else {
+        const transposeAmount = (await selectPrompt({
+          message: 'Transpose amount',
+          choices: TRANSPOSE_AMOUNT_OPTIONS.map((option) => ({
+            value: option.value,
+            name: option.label,
+            description: option.help,
+          })),
+          default: Math.max(1, Math.min(12, Math.abs(defaults.transpose))),
+          theme: inquirerTheme,
+        })) as number;
+        transpose = transposeDirection === 'down' ? -transposeAmount : transposeAmount;
+      }
+
+      pitchRange = (await selectPrompt({
+        message: 'Pitch range',
+        choices: RANGE_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: defaults.pitchRange,
+        theme: inquirerTheme,
+      })) as PitchRange;
+
+      const snapScaleRaw = (await selectPrompt({
+        message: 'Snap to scale',
+        choices: [
+          { value: 'off', name: 'Off', description: 'Keep full chromatic freedom.' },
+          { value: 'on', name: 'On', description: 'Constrain to major scale tones.' },
+        ],
+        default: defaults.snapScale ? 'on' : 'off',
+        theme: inquirerTheme,
+      })) as 'on' | 'off';
+      snapScale = snapScaleRaw === 'on';
+
+      section('7) Modulate', 'Add movement to velocity, duration, or pitch.');
+      modRate = (await selectPrompt({
+        message: 'Modulation rate',
+        choices: MOD_RATE_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: defaults.modRate,
+        theme: inquirerTheme,
+      })) as ModRate;
+
+      const modDepthRaw = await inputPrompt({
+        message: 'Modulation depth (0..100)',
+        default: String(defaults.modDepth),
+        validate: (value: string) => {
+          const parsed = Number.parseInt(value, 10);
+          if (!Number.isFinite(parsed)) return 'Enter a number';
+          if (parsed < 0 || parsed > 100) return 'Must be 0..100';
+          return true;
+        },
+        theme: inquirerTheme,
+      });
+      modDepth = asBoundedInt(modDepthRaw, defaults.modDepth, 0, 100);
+
+      modTarget = (await selectPrompt({
+        message: 'Modulation target',
+        choices: MOD_TARGET_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: defaults.modTarget,
+        theme: inquirerTheme,
+      })) as ModTarget;
+
+      section('8) Movement', 'Control song growth over time and overall note length.');
+      growthStyle = (await selectPrompt({
+        message: 'Growth over time',
+        choices: GROWTH_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: defaults.growthStyle,
+        theme: inquirerTheme,
+      })) as GrowthStyle;
+
+      durationStretch = (await selectPrompt({
+        message: 'Duration stretch',
+        choices: DURATION_STRETCH_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: defaults.durationStretch,
+        theme: inquirerTheme,
+      })) as number;
+
+      if (mode === 'backing') {
+        section('9) Backing', 'Enable drums/bass and shape groove behavior.');
+        const drumsRaw = (await selectPrompt({
+          message: 'Drums',
+          choices: [
+            { value: 'on', name: 'On', description: 'Add style-based kick/snare/hihat.' },
+            { value: 'off', name: 'Off', description: 'No drum backing.' },
+          ],
+          default: defaults.backing.drums ? 'on' : 'off',
+          theme: inquirerTheme,
+        })) as 'on' | 'off';
+        const bassRaw = (await selectPrompt({
+          message: 'Bass',
+          choices: [
+            { value: 'off', name: 'Off', description: 'Melody and drums only.' },
+            { value: 'on', name: 'On', description: 'Add low-register backing notes.' },
+          ],
+          default: defaults.backing.bass ? 'on' : 'off',
+          theme: inquirerTheme,
+        })) as 'on' | 'off';
+        const clapRaw = (await selectPrompt({
+          message: 'Clap',
+          choices: [
+            { value: 'off', name: 'Off', description: 'No clap layer.' },
+            { value: 'on', name: 'On', description: 'Add clap accents.' },
+          ],
+          default: defaults.backing.clap ? 'on' : 'off',
+          theme: inquirerTheme,
+        })) as 'on' | 'off';
+        const openHatRaw = (await selectPrompt({
+          message: 'Open hat',
+          choices: [
+            { value: 'off', name: 'Off', description: 'No open hat layer.' },
+            { value: 'on', name: 'On', description: 'Add open hat accents.' },
+          ],
+          default: defaults.backing.openHat ? 'on' : 'off',
+          theme: inquirerTheme,
+        })) as 'on' | 'off';
+        const percRaw = (await selectPrompt({
+          message: 'Perc',
+          choices: [
+            { value: 'off', name: 'Off', description: 'No extra percussion.' },
+            { value: 'on', name: 'On', description: 'Add extra percussion hits.' },
+          ],
+          default: defaults.backing.perc ? 'on' : 'off',
+          theme: inquirerTheme,
+        })) as 'on' | 'off';
+        const metronome = (await selectPrompt({
+          message: 'Metronome',
+          choices: METRONOME_OPTIONS.map((option) => ({
+            value: option.value,
+            name: option.label,
+            description: option.help,
+          })),
+          default: defaults.backing.metronome,
+          theme: inquirerTheme,
+        })) as MetronomeMode;
+        const gate = (await selectPrompt({
+          message: 'Gate',
+          choices: GATE_OPTIONS.map((option) => ({
+            value: option.value,
+            name: option.label,
+            description: option.help,
+          })),
+          default: defaults.backing.gate,
+          theme: inquirerTheme,
+        })) as GateStyle;
+
+        const swingRaw = await inputPrompt({
+          message: 'Swing (0..100)',
+          default: String(defaults.backing.swing),
+          validate: (value: string) => {
+            const parsed = Number.parseInt(value, 10);
+            if (!Number.isFinite(parsed)) return 'Enter a number';
+            if (parsed < 0 || parsed > 100) return 'Must be 0..100';
+            return true;
+          },
+          theme: inquirerTheme,
+        });
+        const mutateRaw = await inputPrompt({
+          message: 'Mutate (0..100)',
+          default: String(defaults.backing.mutate),
+          validate: (value: string) => {
+            const parsed = Number.parseInt(value, 10);
+            if (!Number.isFinite(parsed)) return 'Enter a number';
+            if (parsed < 0 || parsed > 100) return 'Must be 0..100';
+            return true;
+          },
+          theme: inquirerTheme,
+        });
+        const deviateRaw = await inputPrompt({
+          message: 'Deviate (0..100)',
+          default: String(defaults.backing.deviate),
+          validate: (value: string) => {
+            const parsed = Number.parseInt(value, 10);
+            if (!Number.isFinite(parsed)) return 'Enter a number';
+            if (parsed < 0 || parsed > 100) return 'Must be 0..100';
+            return true;
+          },
+          theme: inquirerTheme,
+        });
+
+        backing = {
+          drums: drumsRaw === 'on',
+          bass: bassRaw === 'on',
+          clap: clapRaw === 'on',
+          openHat: openHatRaw === 'on',
+          perc: percRaw === 'on',
+          metronome,
+          swing: asBoundedInt(swingRaw, defaults.backing.swing, 0, 100),
+          gate,
+          mutate: asBoundedInt(mutateRaw, defaults.backing.mutate, 0, 100),
+          deviate: asBoundedInt(deviateRaw, defaults.backing.deviate, 0, 100),
+        };
+      }
+    }
+
+    section('9) Style', 'Choose a preset music category or custom theme.');
     const theme = await pickTheme((cfg) => selectPrompt(cfg) as Promise<string>, inputPrompt, defaults.theme);
-    section('5) Structure', 'Set length and tempo.');
+    section('10) Structure', 'Set length and tempo.');
     const length = await pickLength(
       (cfg) => selectPrompt(cfg) as Promise<number>,
       inputPrompt,
       defaults.length,
     );
     const bpm = await pickBpm((cfg) => selectPrompt(cfg) as Promise<number>, inputPrompt, defaults.bpm);
-    section('6) Input', 'Choose seed note input mode.');
-    const seedSource = (await selectPrompt({
-      message: 'Seed input mode',
-      choices: SEED_SOURCE_OPTIONS.map((option) => ({
-        value: option.value,
-        name: option.label,
-        description: option.help,
-      })),
-      default: defaults.seedSource,
-      theme: inquirerTheme,
-    })) as 'manual' | 'keyboard';
+    section('11) Input', setupPath === 'advanced' ? 'Choose seed note input mode.' : 'Basic path uses manual seed input.');
+    const seedSource = setupPath === 'advanced'
+      ? (await selectPrompt({
+          message: 'Seed input mode',
+          choices: SEED_SOURCE_OPTIONS.map((option) => ({
+            value: option.value,
+            name: option.label,
+            description: option.help,
+          })),
+          default: defaults.seedSource,
+          theme: inquirerTheme,
+        })) as 'manual' | 'keyboard'
+      : 'manual';
 
     let seedPitch = defaults.seedPitch;
     if (seedSource === 'manual') {
       const seedRaw = await inputPrompt({
         message: 'Seed pitch MIDI 0-127',
         default: String(defaults.seedPitch),
-        validate: (value) => {
+        validate: (value: string) => {
           const parsed = Number.parseInt(value, 10);
           if (!Number.isFinite(parsed)) return 'Enter a number';
           if (parsed < 0 || parsed > 127) return 'Must be 0..127';
@@ -557,7 +1100,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
 
     const beep = false;
 
-    section('7) Export Open Action', 'What should happen right after MIDI export?');
+    section('12) Export Open Action', 'What should happen right after MIDI export?');
     const openAfterExport = (await selectPrompt({
       message: 'After export',
       choices: OPEN_AFTER_EXPORT_OPTIONS.map((option) => ({
@@ -569,7 +1112,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       theme: inquirerTheme,
     })) as 'none' | 'finder' | 'garageband';
 
-    section('8) Export Media Format', 'Optional extra export format when you choose export actions.');
+    section('13) Export Media Format', 'Optional extra export format when you choose export actions.');
     const exportAudio = (await selectPrompt({
       message: 'Export profile',
       choices: EXPORT_AUDIO_OPTIONS.map((option) => ({
@@ -577,16 +1120,26 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         name: option.label,
         description: option.help,
       })),
-      default: defaults.exportAudio,
+      default: defaults.exportAudio === 'none' ? 'mp4' : defaults.exportAudio,
       theme: inquirerTheme,
     })) as 'none' | 'mp3' | 'mp4';
 
     const config = {
       provider,
       providerAuth,
+      mode,
       instrument,
       fxPreset,
       decayStyle,
+      transpose,
+      pitchRange,
+      snapScale,
+      modRate,
+      modDepth,
+      modTarget,
+      growthStyle,
+      durationStretch,
+      backing,
       theme,
       length,
       bpm,
@@ -600,9 +1153,35 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
     section('Summary');
     console.log(color(`Provider:   ${config.provider}`, `${c.dim}${palette.soft}`));
     console.log(color(`Auth:       ${config.providerAuth}`, `${c.dim}${palette.soft}`));
+    console.log(color(`Path:       ${setupPath}`, `${c.dim}${palette.soft}`));
+    console.log(color(`Mode:       ${config.mode}`, `${c.dim}${palette.soft}`));
     console.log(color(`Instrument: ${config.instrument}`, `${c.dim}${palette.soft}`));
     console.log(color(`FX preset:  ${config.fxPreset}`, `${c.dim}${palette.soft}`));
     console.log(color(`Decay:      ${config.decayStyle}`, `${c.dim}${palette.soft}`));
+    console.log(color(`Pitch:      transpose ${config.transpose}, range ${config.pitchRange}, snap ${config.snapScale ? 'on' : 'off'}`, `${c.dim}${palette.soft}`));
+    console.log(color(`Modulate:   ${config.modRate} depth ${config.modDepth} target ${config.modTarget}`, `${c.dim}${palette.soft}`));
+    console.log(color(`Growth:     ${config.growthStyle}`, `${c.dim}${palette.soft}`));
+    console.log(color(`Duration:   ${config.durationStretch}x`, `${c.dim}${palette.soft}`));
+    if (config.mode === 'backing') {
+      console.log(
+        color(
+          `Backing:    drums ${config.backing.drums ? 'on' : 'off'}, bass ${config.backing.bass ? 'on' : 'off'}, metronome ${config.backing.metronome}`,
+          `${c.dim}${palette.soft}`,
+        ),
+      );
+      console.log(
+        color(
+          `Drum FX:    clap ${config.backing.clap ? 'on' : 'off'}, open hat ${config.backing.openHat ? 'on' : 'off'}, perc ${config.backing.perc ? 'on' : 'off'}`,
+          `${c.dim}${palette.soft}`,
+        ),
+      );
+      console.log(
+        color(
+          `Groove:     swing ${config.backing.swing}, gate ${config.backing.gate}, mutate ${config.backing.mutate}, deviate ${config.backing.deviate}`,
+          `${c.dim}${palette.soft}`,
+        ),
+      );
+    }
     console.log(color(`Theme:      ${config.theme}`, `${c.dim}${palette.soft}`));
     console.log(color(`Length:     ${config.length} notes`, `${c.dim}${palette.soft}`));
     console.log(color(`BPM:        ${config.bpm}`, `${c.dim}${palette.soft}`));

@@ -2,6 +2,7 @@ import { access, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
+import type { NoteEvent } from './arrangement';
 import type { FxSettings } from './fx';
 import type { GeneratedNote } from './types';
 
@@ -11,8 +12,8 @@ function pitchToFrequency(pitch: number): number {
   return 440 * Math.pow(2, (pitch - 69) / 12);
 }
 
-function ensureParent(path: string): Promise<void> {
-  return mkdir(dirname(path), { recursive: true });
+async function ensureParent(path: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true });
 }
 
 function i16(n: number): number {
@@ -25,6 +26,37 @@ function waveSample(type: FxSettings['waveform'], phase: number): number {
   if (type === 'square') return s >= 0 ? 1 : -1;
   // saw, normalized [-1..1]
   return 2 * ((phase / (2 * Math.PI)) % 1) - 1;
+}
+
+function drumSample(pitch: number, i: number, count: number): number {
+  const t = i / SAMPLE_RATE;
+  const n = Math.random() * 2 - 1;
+
+  // Kick
+  if (pitch === 35 || pitch === 36) {
+    const f = 120 * Math.exp(-t * 14) + 42;
+    const phase = 2 * Math.PI * f * t;
+    const env = Math.exp(-t * 8);
+    return Math.sin(phase) * env;
+  }
+
+  // Snare / clap-ish
+  if (pitch === 38 || pitch === 40) {
+    const tone = Math.sin(2 * Math.PI * 210 * t) * Math.exp(-t * 14) * 0.35;
+    const noise = n * Math.exp(-t * 18) * 0.85;
+    return tone + noise;
+  }
+
+  // Closed/open hats
+  if (pitch === 42 || pitch === 44 || pitch === 46) {
+    const bright = n - (i > 0 ? Math.sin(2 * Math.PI * 1800 * ((i - 1) / SAMPLE_RATE)) * 0.2 : 0);
+    const env = pitch === 46 ? Math.exp(-t * 36) : Math.exp(-t * 58);
+    return bright * env;
+  }
+
+  // Generic percussion fallback
+  const env = Math.exp((-28 * i) / Math.max(1, count));
+  return n * env;
 }
 
 function applyPostFx(samples: Float32Array, fx: FxSettings): Float32Array {
@@ -65,27 +97,56 @@ function applyPostFx(samples: Float32Array, fx: FxSettings): Float32Array {
   return mixed;
 }
 
-function buildWavPcm(sequence: GeneratedNote[], fx: FxSettings): Buffer {
-  const samples: number[] = [];
-  for (const note of sequence) {
-    const freq = pitchToFrequency(note.pitch);
+function buildWavPcm(sequence: GeneratedNote[] | NoteEvent[], fx: FxSettings): Buffer {
+  const events: NoteEvent[] = (sequence as NoteEvent[])[0]?.startMs != null
+    ? (sequence as NoteEvent[])
+    : (() => {
+        const out: NoteEvent[] = [];
+        let t = 0;
+        for (const n of sequence as GeneratedNote[]) {
+          out.push({ pitch: n.pitch, velocity: n.velocity, durationMs: n.durationMs, startMs: t, channel: 0 });
+          t += n.durationMs;
+        }
+        return out;
+      })();
+
+  const endMs = events.length ? Math.max(...events.map((e) => e.startMs + e.durationMs)) : 0;
+  const totalSamples = Math.max(1, Math.ceil((endMs / 1000) * SAMPLE_RATE));
+  const mix = new Float32Array(totalSamples);
+
+  for (const note of events) {
+    const isDrum = note.channel === 9;
+    const freq = isDrum ? 0 : pitchToFrequency(note.pitch);
     const durationS = Math.max(0.02, note.durationMs / 1000);
     const count = Math.max(1, Math.floor(SAMPLE_RATE * durationS));
-    const amp = (Math.max(1, Math.min(127, note.velocity)) / 127) * 0.35;
+    const amp = (Math.max(1, Math.min(127, note.velocity)) / 127) * (isDrum ? 0.5 : 0.35);
+    const startSample = Math.max(0, Math.floor((note.startMs / 1000) * SAMPLE_RATE));
 
     for (let i = 0; i < count; i++) {
-      const t = i / SAMPLE_RATE;
-      const phase = 2 * Math.PI * freq * t;
-      const envDecay = 2 + (1 - fx.reverb) * 4;
-      const env = Math.exp((-envDecay * i) / count);
-      const osc = waveSample(fx.waveform, phase);
-      const value = osc * amp * env;
-      samples.push(i16(value * 32767));
+      const idx = startSample + i;
+      if (idx >= mix.length) break;
+      if (isDrum) {
+        mix[idx] += drumSample(note.pitch, i, count) * amp;
+      } else {
+        const t = i / SAMPLE_RATE;
+        const phase = 2 * Math.PI * freq * t;
+        const envDecay = 2 + (1 - fx.reverb) * 4;
+        const env = Math.exp((-envDecay * i) / count);
+        const osc = waveSample(fx.waveform, phase);
+        mix[idx] += osc * amp * env;
+      }
     }
   }
 
-  const floatSamples = new Float32Array(samples.length);
-  for (let i = 0; i < samples.length; i++) floatSamples[i] = samples[i] / 32768;
+  // normalize before post fx
+  let peak = 0;
+  for (let i = 0; i < mix.length; i++) peak = Math.max(peak, Math.abs(mix[i]));
+  if (peak > 1) {
+    const inv = 1 / peak;
+    for (let i = 0; i < mix.length; i++) mix[i] *= inv;
+  }
+
+  const floatSamples = mix;
   const processed = applyPostFx(floatSamples, fx);
 
   const pcm = new Int16Array(processed.length);
@@ -145,7 +206,7 @@ export function isFfmpegMissing(err: unknown): boolean {
 }
 
 export async function exportSequenceToWav(
-  sequence: GeneratedNote[],
+  sequence: GeneratedNote[] | NoteEvent[],
   outPath: string,
   fx: FxSettings,
 ): Promise<string> {

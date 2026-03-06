@@ -2,6 +2,19 @@ import { dirname, extname, join, basename } from 'node:path';
 import { unlink } from 'node:fs/promises';
 import { exportSequenceToMidi } from './exportMidi';
 import { exportSequenceToWav, exportWavToMp3, exportWavToMp4, isFfmpegMissing } from './exportAudio';
+import {
+  applyGrowthAndDuration,
+  buildBackingEvents,
+  sequenceToEvents,
+  transformMelody,
+  type BackingControls,
+  type GenerationMode,
+  type GrowthStyle,
+  type ModRate,
+  type ModTarget,
+  type NoteEvent,
+  type PitchRange,
+} from './arrangement';
 import { applyFxToSequence, buildFxSettings, type DecayStyle, type FxPresetName, type FxSettings } from './fx';
 import { applyInstrumentProfile, getInstrumentProfile, type InstrumentName } from './instrument';
 import { promptCliConfig } from './cli';
@@ -75,6 +88,25 @@ function arg(name: string, fallback: string): string {
   return found ? found.split('=').slice(1).join('=') : fallback;
 }
 
+function boolArg(name: string, fallback: boolean): boolean {
+  const raw = arg(name, fallback ? 'true' : 'false').trim().toLowerCase();
+  if (raw === 'true' || raw === '1' || raw === 'yes' || raw === 'on') return true;
+  if (raw === 'false' || raw === '0' || raw === 'no' || raw === 'off') return false;
+  return fallback;
+}
+
+function intArg(name: string, fallback: number, min: number, max: number): number {
+  const raw = Number.parseInt(arg(name, String(fallback)), 10);
+  if (!Number.isFinite(raw)) return fallback;
+  return Math.max(min, Math.min(max, raw));
+}
+
+function floatArg(name: string, fallback: number, min: number, max: number): number {
+  const raw = Number.parseFloat(arg(name, String(fallback)));
+  if (!Number.isFinite(raw)) return fallback;
+  return Math.max(min, Math.min(max, raw));
+}
+
 type PostRunAction = 'finish' | 'retry' | 'export-finish' | 'export-retry';
 
 const inquirerTheme = {
@@ -120,7 +152,7 @@ function defaultMidiPath(): string {
 }
 
 async function maybeExportMidi(
-  sequence: GeneratedNote[],
+  sequence: GeneratedNote[] | NoteEvent[],
   bpm: number,
   explicitPath: string | undefined,
   openAfterExport: OpenAfterExport,
@@ -194,6 +226,25 @@ Flags:
   --instrument=lead|bass|pad|keys|drums
   --fx=clean|dark|grime|lush|punch
   --decay=tight|balanced|long
+  --mode=single|backing
+  --transpose=-12..12
+  --pitch-range=low|mid|high
+  --snap-scale=true|false
+  --mod-rate=off|slow|med|fast
+  --mod-depth=0..100
+  --mod-target=velocity|duration|pitch
+  --growth=flat|build
+  --duration-stretch=1..4
+  --backing-drums=true|false
+  --backing-bass=true|false
+  --backing-clap=true|false
+  --backing-open-hat=true|false
+  --backing-perc=true|false
+  --metronome=off|count-in|always
+  --swing=0..100
+  --gate=tight|balanced|long
+  --mutate=0..100
+  --deviate=0..100
   --theme="<style prompt>"
   --length=<notes>
   --bpm=<tempo>
@@ -229,39 +280,46 @@ async function main() {
 
   const interactive = !process.argv.includes('--no-interactive');
   const exportMidiFlag = process.argv.find((a) => a.startsWith('--export-midi='))?.split('=').slice(1).join('=');
+  const mode = arg('mode', 'single') as GenerationMode;
+  const backing: BackingControls = {
+    drums: boolArg('backing-drums', mode === 'backing'),
+    bass: boolArg('backing-bass', false),
+    clap: boolArg('backing-clap', false),
+    openHat: boolArg('backing-open-hat', false),
+    perc: boolArg('backing-perc', false),
+    metronome: arg('metronome', mode === 'backing' ? 'count-in' : 'off') as BackingControls['metronome'],
+    swing: intArg('swing', 0, 0, 100),
+    gate: arg('gate', 'balanced') as BackingControls['gate'],
+    mutate: intArg('mutate', 0, 0, 100),
+    deviate: intArg('deviate', 0, 0, 100),
+  };
   const defaults = {
     provider: arg('provider', 'mock') as ProviderName,
     providerAuth: (arg('provider', 'mock') === 'mock' ? 'none' : 'env') as 'none' | 'env' | 'session',
+    mode,
     instrument: arg('instrument', 'lead') as InstrumentName,
     fxPreset: arg('fx', 'clean') as FxPresetName,
     decayStyle: arg('decay', 'balanced') as DecayStyle,
+    transpose: intArg('transpose', 0, -12, 12),
+    pitchRange: arg('pitch-range', 'mid') as PitchRange,
+    snapScale: boolArg('snap-scale', false),
+    modRate: arg('mod-rate', 'off') as ModRate,
+    modDepth: intArg('mod-depth', 0, 0, 100),
+    modTarget: arg('mod-target', 'velocity') as ModTarget,
+    growthStyle: arg('growth', 'flat') as GrowthStyle,
+    durationStretch: floatArg('duration-stretch', 1, 1, 4),
+    backing,
     theme: arg('theme', 'dark ambient techno'),
-    length: Number(arg('length', '16')),
-    bpm: Number(arg('bpm', '120')),
-    seedPitch: Number(arg('seed', '60')),
+    length: intArg('length', 16, 1, 512),
+    bpm: intArg('bpm', 120, 1, 400),
+    seedPitch: intArg('seed', 60, 0, 127),
     seedSource: (arg('seed-source', 'keyboard') as 'manual' | 'keyboard'),
-    beep: arg('beep', 'false') === 'true',
+    beep: boolArg('beep', false),
     openAfterExport: (arg('open-after-export', 'finder') as OpenAfterExport),
     exportAudio: (arg('export-audio', 'none') as 'none' | 'mp3' | 'mp4'),
   };
 
-  const config = interactive
-    ? await promptCliConfig(defaults)
-    : {
-        provider: defaults.provider,
-        providerAuth: defaults.providerAuth,
-        instrument: defaults.instrument,
-        fxPreset: defaults.fxPreset,
-        decayStyle: defaults.decayStyle,
-        theme: defaults.theme,
-        length: defaults.length,
-        bpm: defaults.bpm,
-        seedPitch: defaults.seedPitch,
-        seedSource: defaults.seedSource,
-        beep: defaults.beep,
-        openAfterExport: defaults.openAfterExport,
-        exportAudio: defaults.exportAudio,
-      };
+  const config = interactive ? await promptCliConfig(defaults) : defaults;
 
   const provider = buildProvider(config.provider);
   let keepRunning = true;
@@ -277,30 +335,66 @@ async function main() {
         bpm: config.bpm,
       }),
     );
+    const transformedSequence = transformMelody(
+      sequence,
+      {
+        transpose: config.transpose,
+        range: config.pitchRange,
+        snapScale: config.snapScale,
+      },
+      {
+        rate: config.modRate,
+        depth: config.modDepth,
+        target: config.modTarget,
+      },
+      config.backing,
+    );
+    const arrangedSequence = applyGrowthAndDuration(
+      transformedSequence,
+      config.growthStyle,
+      config.durationStretch,
+    );
     const fxSettings = buildFxSettings(config.fxPreset, config.decayStyle);
-    const fxSequence = applyFxToSequence(sequence, fxSettings);
+    const fxSequence = applyFxToSequence(arrangedSequence, fxSettings);
     const instrumentSequence = applyInstrumentProfile(fxSequence, config.instrument);
     const instrumentProfile = getInstrumentProfile(config.instrument);
+    const melodyEvents = sequenceToEvents(instrumentSequence, instrumentProfile.midiChannel);
+    const backingEvents = config.mode === 'backing'
+      ? buildBackingEvents(melodyEvents, config.theme, config.bpm, config.backing, config.growthStyle)
+      : [];
+    const playbackEvents = [...melodyEvents, ...backingEvents].sort((a, b) => a.startMs - b.startMs);
 
     console.log(color('Session', `${c.bold}${palette.primary}`));
     logKV('Provider:', config.provider);
     logKV('Auth:', config.providerAuth);
+    logKV('Mode:', config.mode);
     logKV('Instrument:', `${instrumentProfile.label} (ch ${instrumentProfile.midiChannel + 1}, program ${instrumentProfile.program})`);
     logKV('FX:', `${config.fxPreset} / ${config.decayStyle}`);
+    logKV('Pitch:', `transpose ${config.transpose}, range ${config.pitchRange}, snap ${config.snapScale ? 'on' : 'off'}`);
+    logKV('Modulate:', `${config.modRate} depth ${config.modDepth} target ${config.modTarget}`);
+    logKV('Growth:', config.growthStyle);
+    logKV('Duration:', `${config.durationStretch}x`);
+    if (config.mode === 'backing') {
+      logKV('Backing:', `drums ${config.backing.drums ? 'on' : 'off'}, bass ${config.backing.bass ? 'on' : 'off'}, metronome ${config.backing.metronome}`);
+      logKV('Drum FX:', `clap ${config.backing.clap ? 'on' : 'off'}, open hat ${config.backing.openHat ? 'on' : 'off'}, perc ${config.backing.perc ? 'on' : 'off'}`);
+      logKV('Groove:', `swing ${config.backing.swing}, gate ${config.backing.gate}, mutate ${config.backing.mutate}, deviate ${config.backing.deviate}`);
+    }
     logKV('Theme:', config.theme);
     logKV('Seed source:', config.seedSource);
     logKV('Seed pitch:', seedPitch);
     logKV('Generated notes:', `${instrumentSequence.length} notes`);
     logKV('Preview:', formatNotePreview(instrumentSequence));
 
-    await playSequenceToOutput(instrumentSequence, {
+    await playSequenceToOutput(playbackEvents, {
       beep: config.beep,
       instrument: instrumentProfile,
+      metronome: config.backing.metronome,
+      bpm: config.bpm,
     });
 
     if (exportMidiFlag && !interactive) {
       await maybeExportMidi(
-        instrumentSequence,
+        playbackEvents,
         config.bpm,
         exportMidiFlag,
         config.openAfterExport,
@@ -325,7 +419,7 @@ async function main() {
 
     if (action === 'export-finish') {
       await maybeExportMidi(
-        instrumentSequence,
+        playbackEvents,
         config.bpm,
         undefined,
         config.openAfterExport,
@@ -338,7 +432,7 @@ async function main() {
     }
 
     await maybeExportMidi(
-      instrumentSequence,
+      playbackEvents,
       config.bpm,
       undefined,
       config.openAfterExport,

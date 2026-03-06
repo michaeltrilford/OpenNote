@@ -11,7 +11,9 @@ type ChatCompletionResponse = {
   }>;
 };
 
-function extractContent(content: ChatCompletionResponse['choices'][number]['message']['content']): string {
+type ChatContent = string | Array<{ type?: string; text?: string }> | undefined;
+
+function extractContent(content: ChatContent): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content

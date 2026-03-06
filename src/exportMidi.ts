@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
+import type { NoteEvent } from './arrangement';
 import type { GeneratedNote } from './types';
 
 function u32be(n: number): Buffer {
@@ -31,7 +32,7 @@ function ticksFromMs(durationMs: number, bpm: number, tpqn: number): number {
 }
 
 export async function exportSequenceToMidi(
-  sequence: GeneratedNote[],
+  sequence: GeneratedNote[] | NoteEvent[],
   bpm: number,
   outPath: string,
 ): Promise<string> {
@@ -42,13 +43,40 @@ export async function exportSequenceToMidi(
   events.push(0x00, 0xff, 0x51, 0x03);
   events.push((tempoUsPerBeat >> 16) & 0xff, (tempoUsPerBeat >> 8) & 0xff, tempoUsPerBeat & 0xff);
 
-  for (const note of sequence) {
+  const asEvents: NoteEvent[] = (sequence as NoteEvent[])[0]?.startMs != null
+    ? (sequence as NoteEvent[])
+    : (() => {
+        const out: NoteEvent[] = [];
+        let t = 0;
+        for (const n of sequence as GeneratedNote[]) {
+          out.push({
+            pitch: n.pitch,
+            velocity: n.velocity,
+            durationMs: n.durationMs,
+            startMs: t,
+            channel: 0,
+          });
+          t += n.durationMs;
+        }
+        return out;
+      })();
+
+  const midiEvents: Array<{ tick: number; bytes: number[] }> = [];
+  for (const note of asEvents) {
     const pitch = Math.max(0, Math.min(127, Math.round(note.pitch)));
     const velocity = Math.max(1, Math.min(127, Math.round(note.velocity)));
-    const ticks = ticksFromMs(note.durationMs, bpm, tpqn);
-
-    events.push(...varLen(0), 0x90, pitch, velocity);
-    events.push(...varLen(ticks), 0x80, pitch, 0x00);
+    const startTick = ticksFromMs(note.startMs, bpm, tpqn);
+    const durTick = ticksFromMs(note.durationMs, bpm, tpqn);
+    const ch = Math.max(0, Math.min(15, Math.round(note.channel ?? 0)));
+    midiEvents.push({ tick: startTick, bytes: [0x90 | ch, pitch, velocity] });
+    midiEvents.push({ tick: startTick + durTick, bytes: [0x80 | ch, pitch, 0x00] });
+  }
+  midiEvents.sort((a, b) => a.tick - b.tick);
+  let prevTick = 0;
+  for (const e of midiEvents) {
+    const delta = Math.max(0, e.tick - prevTick);
+    events.push(...varLen(delta), ...e.bytes);
+    prevTick = e.tick;
   }
 
   events.push(0x00, 0xff, 0x2f, 0x00);

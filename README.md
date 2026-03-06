@@ -65,6 +65,11 @@ npm run note -- --no-interactive --provider=mock --instrument=keys --fx=dark --d
 npm run note -- --no-interactive --provider=mock --instrument=lead --fx=grime --decay=long --theme="industrial" --length=16 --bpm=130 --seed-source=manual --seed=60 --export-midi=./exports/take-01.mid --export-audio=mp4 --open-after-export=finder
 ```
 
+11. AI backing (techno drums + bass)
+```bash
+npm run note -- --no-interactive --provider=mock --mode=backing --instrument=lead --fx=punch --decay=balanced --theme="minimal techno groove" --length=16 --bpm=132 --seed-source=manual --seed=60 --transpose=0 --pitch-range=mid --snap-scale=true --mod-rate=med --mod-depth=25 --mod-target=velocity --backing-drums=true --backing-bass=true --metronome=count-in --swing=18 --gate=balanced --mutate=12 --deviate=10 --export-midi=./exports/template-11-ai-backing.mid --export-audio=mp4 --open-after-export=finder
+```
+
 ## Interactive flow
 The CLI uses arrow keys + Enter and runs this setup:
 
@@ -72,35 +77,74 @@ The CLI uses arrow keys + Enter and runs this setup:
 - Demo mode (`mock`) or live provider (`openai`, `gemini`, `claude`, `groq`, `grok`)
 - If provider key is missing, CLI prompts for it
 
-2. Instrument
+2. Setup path
+- `basic`: quick run with smart defaults (`single`, `lead`, `clean`, `balanced`, `mp4 + Finder`) plus style/structure/seed
+- `surprise me`: instantly auto-picks full config and goes straight to generation
+- `advanced`: full controls for pitch, modulation, and groove
+
+Advanced-only steps:
+
+3. Mode
+- `single` (default): melody-only flow
+- `backing`: reveals drums/bass/metronome and groove controls
+
+4. Instrument
 - `lead`, `bass`, `pad`, `keys`, `drums`
 
-3. FX
+5. FX
 - Preset: `clean`, `dark`, `grime`, `lush`, `punch`
 - Decay: `tight`, `balanced`, `long`
 
-4. Style
+6. Pitch
+- `transpose` via arrow flow: direction (`Down/Neutral/Up`) + amount (`1..12`)
+- `range` (`low|mid|high`)
+- `snap to scale` (`on|off`)
+
+7. Modulate
+- `rate` (`off|slow|med|fast`)
+- `depth` (`0..100`)
+- `target` (`velocity|duration|pitch`)
+
+8. Movement
+- `growth` (`flat|build`) for song energy over time
+- `duration stretch` (`1.0x..3.0x`) for longer phrase feel
+
+9. Backing controls (only when mode is `backing`)
+- Drums on/off
+- Bass on/off
+- Clap on/off
+- Open hat on/off
+- Perc on/off
+- Metronome (`off|count-in|always`)
+- Swing (`0..100`)
+- Gate (`tight|balanced|long`)
+- Mutate (`0..100`)
+- Deviate (`0..100`)
+
+All paths include:
+
+10. Style
 - Preset music categories or custom theme
 
-5. Structure
+11. Structure
 - Length (notes)
 - BPM
 
-6. Input
-- `keyboard` mode: press `1-8`, `Shift+1-8` for sharps, `+/-` octave
-- `manual` mode: enter MIDI seed pitch (`0-127`)
+12. Input
+- `basic` and `surprise me`: manual seed
+- `advanced`: `keyboard` or `manual` mode
 
-7. Export open action
+13. Export open action
 - `none`
 - `finder`
 - `garageband`
 
-8. Export media profile
-- `none` (MIDI only)
+14. Export media profile
+- `mp4` (default highlighted in prompt)
 - `mp3`
-- `mp4`
+- `none` (MIDI only)
 
-9. Summary + confirm
+15. Summary + confirm (advanced only)
 - `Start generation`
 - `Back to setup`
 
@@ -131,11 +175,35 @@ With export + Finder reveal:
 npm run note -- --no-interactive --provider=mock --theme="ambient" --length=16 --bpm=120 --seed-source=manual --seed=60 --export-midi=./exports/take-01.mid --open-after-export=finder --export-audio=mp4
 ```
 
+With AI backing + groove controls:
+```bash
+npm run note -- --no-interactive --provider=mock --mode=backing --theme="trap melodic lead" --length=16 --bpm=140 --seed-source=manual --seed=57 --transpose=0 --pitch-range=mid --snap-scale=false --mod-rate=slow --mod-depth=20 --mod-target=velocity --backing-drums=true --backing-bass=false --metronome=count-in --swing=12 --gate=tight --mutate=10 --deviate=8 --export-midi=./exports/take-backing.mid --open-after-export=finder --export-audio=mp4
+```
+
 ## CLI flags
 - `--provider=mock|openai|gemini|claude|groq|grok`
 - `--instrument=lead|bass|pad|keys|drums`
 - `--fx=clean|dark|grime|lush|punch`
 - `--decay=tight|balanced|long`
+- `--mode=single|backing`
+- `--transpose=-12..12`
+- `--pitch-range=low|mid|high`
+- `--snap-scale=true|false`
+- `--mod-rate=off|slow|med|fast`
+- `--mod-depth=0..100`
+- `--mod-target=velocity|duration|pitch`
+- `--growth=flat|build`
+- `--duration-stretch=1..4`
+- `--backing-drums=true|false`
+- `--backing-bass=true|false`
+- `--backing-clap=true|false`
+- `--backing-open-hat=true|false`
+- `--backing-perc=true|false`
+- `--metronome=off|count-in|always`
+- `--swing=0..100`
+- `--gate=tight|balanced|long`
+- `--mutate=0..100`
+- `--deviate=0..100`
 - `--theme="..."`
 - `--length=<notes>`
 - `--bpm=<tempo>`
@@ -165,6 +233,16 @@ npm run pack:check
 4. Publish:
 ```bash
 npm publish
+```
+
+## Versioning
+- Versioning uses SemVer: `major.minor.patch`.
+- Changelog lives in `CHANGELOG.md`.
+- Bump version before release:
+```bash
+npm run version:patch   # fixes only
+npm run version:minor   # new backward-compatible features
+npm run version:major   # breaking changes
 ```
 
 ## Export behavior
