@@ -16,6 +16,7 @@ import type { ProviderName } from './providers/factory';
 export type CliConfig = {
   provider: ProviderName;
   providerAuth: 'none' | 'env' | 'session';
+  source: 'generated' | 'record';
   mode: GenerationMode;
   instrument: InstrumentName;
   fxPreset: FxPresetName;
@@ -40,6 +41,18 @@ export type CliConfig = {
   openAfterExport: 'none' | 'finder' | 'garageband';
   exportAudio: 'none' | 'mp3' | 'mp4';
   exportStems: boolean;
+  eqMode: 'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone';
+  recordDevice: string;
+  recordSeconds: number;
+  recordMonitor: boolean;
+  recordProfile: 'default' | 'vinyl' | 'dust';
+  recordFamily: 'character' | 'motion' | 'space' | 'bug';
+  recordBugMode: 'off' | 'pll-drift' | 'buffer-tear' | 'clock-bleed' | 'memory-rot' | 'crc-glitch';
+  recordIntensity: number;
+  recordChaos: number;
+  recordMix: number;
+  recordScratch: 'off' | 'texture' | 'dj';
+  recordWavy: number;
 };
 
 const c = {
@@ -94,6 +107,7 @@ type SelectPromptFn = (cfg: any) => Promise<any>;
 type InputPromptFn = (cfg: any) => Promise<string>;
 type PasswordPromptFn = (cfg: any) => Promise<string>;
 type SetupPath = 'basic' | 'surprise' | 'advanced';
+type SurpriseStrength = 'low' | 'medium' | 'wild';
 
 const inquirerTheme = {
   icon: {
@@ -156,6 +170,12 @@ const EXPORT_AUDIO_OPTIONS: Option<'none' | 'mp3' | 'mp4'>[] = [
   { value: 'none', label: 'MIDI only (.mid)', help: 'No extra audio/video export.' },
 ];
 
+const EXPORT_AUDIO_RECORD_OPTIONS: Option<'none' | 'mp3' | 'mp4'>[] = [
+  { value: 'mp4', label: 'MIDI + MP4', help: 'Render video with record-player character FX.' },
+  { value: 'mp3', label: 'MIDI + MP3', help: 'Render audio with record-player character FX.' },
+  { value: 'none', label: 'MIDI only (.mid)', help: 'No extra audio/video export.' },
+];
+
 const INSTRUMENT_OPTIONS: Option<InstrumentName>[] = [
   { value: 'lead', label: 'Lead', help: 'Higher melodic line.' },
   { value: 'bass', label: 'Bass', help: 'Lower-end groove line.' },
@@ -183,19 +203,73 @@ const MODE_OPTIONS: Option<GenerationMode>[] = [
   { value: 'backing', label: 'AI Backing', help: 'Reveal drums/bass/groove controls.' },
 ];
 
+const SOURCE_OPTIONS: Option<'generated' | 'record'>[] = [
+  { value: 'generated', label: 'Generate', help: 'Default flow: generate MIDI notes (melody + optional backing).'},
+  { value: 'record', label: 'Record Player', help: 'Generate notes, then render with record-player FX controls.' },
+];
+
+const RECORD_PROFILE_OPTIONS: Option<'default' | 'vinyl' | 'dust'>[] = [
+  { value: 'default', label: 'Default', help: 'Cleanest render with no extra record color.' },
+  { value: 'vinyl', label: 'Vinyl', help: 'Warm deck tone with gentle saturation.' },
+  { value: 'dust', label: 'Dust', help: 'Darker lo-fi texture with grit.' },
+];
+
+const EQ_MODE_OPTIONS: Option<'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone'>[] = [
+  { value: 'balanced', label: 'Balanced', help: 'General-purpose leveling and tone balance.' },
+  { value: 'flat', label: 'Flat', help: 'Minimal tonal shaping.' },
+  { value: 'warm', label: 'Warm', help: 'Softer highs with fuller low-mids.' },
+  { value: 'bright', label: 'Bright', help: 'Extra top-end clarity.' },
+  { value: 'bass', label: 'Bass Boost', help: 'Low-end emphasis for heavier vibe.' },
+  { value: 'phone', label: 'Phone / Radio', help: 'Narrow band-limited texture.' },
+];
+
+const RECORD_FAMILY_OPTIONS: Option<'character' | 'motion' | 'space' | 'bug'>[] = [
+  { value: 'character', label: 'Character', help: 'Tone color and saturation.' },
+  { value: 'motion', label: 'Motion', help: 'Time movement and wobble behavior.' },
+  { value: 'space', label: 'Space', help: 'Echo and room-style width.' },
+  { value: 'bug', label: 'Bug Mode', help: 'Intentional unstable/glitch character.' },
+];
+
+const BUG_MODE_OPTIONS: Option<'off' | 'pll-drift' | 'buffer-tear' | 'clock-bleed' | 'memory-rot' | 'crc-glitch'>[] = [
+  { value: 'off', label: 'Off', help: 'No bug modulation.' },
+  { value: 'pll-drift', label: 'PLL Drift', help: 'Pitch hunts around center lock.' },
+  { value: 'buffer-tear', label: 'Buffer Tear', help: 'Micro pull/tear movement.' },
+  { value: 'clock-bleed', label: 'Clock Bleed', help: 'Aliased digital grit.' },
+  { value: 'memory-rot', label: 'Memory Rot', help: 'Decaying lo-fi loss.' },
+  { value: 'crc-glitch', label: 'CRC Glitch', help: 'Sharp error-like gating.' },
+];
+
 const SETUP_PATH_OPTIONS: Option<SetupPath>[] = [
   { value: 'basic', label: 'Basic', help: 'Fast setup using default pitch/mod/backing values.' },
   { value: 'surprise', label: 'Surprise me', help: 'Auto-pick presets and controls from your style.' },
   { value: 'advanced', label: 'Advanced', help: 'Full control over pitch, modulation, and groove.' },
 ];
 
+const SURPRISE_STRENGTH_OPTIONS: Option<SurpriseStrength>[] = [
+  { value: 'low', label: 'Low', help: 'Safer combinations, subtle variation.' },
+  { value: 'medium', label: 'Medium', help: 'Balanced novelty and musical stability.' },
+  { value: 'wild', label: 'Wild', help: 'Higher-risk, stronger character jumps.' },
+];
+
 function pickOne<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
 
-function surprisePreset(theme: string): {
+function rangeInt(min: number, max: number): number {
+  if (max <= min) return min;
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+function strengthChance(strength: SurpriseStrength, low: number, medium: number, wild: number): boolean {
+  const p = strength === 'low' ? low : strength === 'medium' ? medium : wild;
+  return Math.random() < p;
+}
+
+function surprisePreset(theme: string, strength: SurpriseStrength): {
+  source: 'generated' | 'record';
   mode: GenerationMode;
   instrument: InstrumentName;
+  eqMode: 'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone';
   fxPreset: FxPresetName;
   decayStyle: DecayStyle;
   transpose: number;
@@ -209,12 +283,32 @@ function surprisePreset(theme: string): {
   timingFeel: TimingFeel;
   timingAmount: number;
   backing: BackingControls;
+  recordProfile: 'default' | 'vinyl' | 'dust';
+  recordFamily: 'character' | 'motion' | 'space' | 'bug';
+  recordBugMode: 'off' | 'pll-drift' | 'buffer-tear' | 'clock-bleed' | 'memory-rot' | 'crc-glitch';
+  recordIntensity: number;
+  recordChaos: number;
+  recordMix: number;
+  recordScratch: 'off' | 'texture' | 'dj';
+  recordWavy: number;
+  openAfterExport: 'none' | 'finder' | 'garageband';
+  exportAudio: 'none' | 'mp3' | 'mp4';
+  exportStems: boolean;
+  length: number;
+  bpm: number;
+  seedPitch: number;
+  rationale: string;
 } {
   const t = theme.toLowerCase();
   const isAmbient = t.includes('ambient') || t.includes('cinematic');
   const isTrap = t.includes('trap');
   const isTech = t.includes('techno') || t.includes('house') || t.includes('industrial');
-  const mode: GenerationMode = isAmbient ? 'single' : Math.random() < 0.6 ? 'backing' : 'single';
+  const source: 'generated' | 'record' = isAmbient
+    ? (strengthChance(strength, 0.2, 0.4, 0.6) ? 'record' : 'generated')
+    : strengthChance(strength, 0.18, 0.35, 0.5) ? 'record' : 'generated';
+  const mode: GenerationMode = isAmbient
+    ? 'single'
+    : strengthChance(strength, 0.45, 0.6, 0.72) ? 'backing' : 'single';
   const instrument = isAmbient
     ? pickOne<InstrumentName>(['pad', 'keys', 'lead'])
     : isTrap
@@ -227,41 +321,52 @@ function surprisePreset(theme: string): {
     : isTrap
       ? pickOne<FxPresetName>(['grime', 'punch', 'dark'])
       : isTech
-        ? pickOne<FxPresetName>(['punch', 'dark', 'grime'])
-        : pickOne<FxPresetName>(['clean', 'dark', 'punch', 'lush']);
+      ? pickOne<FxPresetName>(['punch', 'dark', 'grime'])
+      : pickOne<FxPresetName>(['clean', 'dark', 'punch', 'lush']);
   const decayStyle = isAmbient
     ? pickOne<DecayStyle>(['long', 'balanced'])
     : isTrap
       ? pickOne<DecayStyle>(['tight', 'balanced'])
       : pickOne<DecayStyle>(['balanced', 'tight', 'long']);
+  const eqMode = isAmbient
+    ? pickOne<'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone'>(['balanced', 'warm', 'flat'])
+    : isTrap
+      ? pickOne<'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone'>(['bass', 'balanced', 'warm'])
+      : isTech
+        ? pickOne<'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone'>(['balanced', 'bright', 'phone'])
+        : pickOne<'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone'>(['balanced', 'warm', 'bright', 'flat']);
 
-  const transpose = Math.floor(Math.random() * 11) - 5;
+  const transpose = rangeInt(-5, 5);
   const pitchRange = instrument === 'bass'
     ? 'low'
     : instrument === 'pad'
       ? pickOne<PitchRange>(['mid', 'high'])
       : pickOne<PitchRange>(['low', 'mid', 'high']);
-  const snapScale = Math.random() < (isTrap ? 0.4 : 0.7);
+  const snapScale = strengthChance(strength, isTrap ? 0.45 : 0.8, isTrap ? 0.5 : 0.72, isTrap ? 0.55 : 0.62);
   const modRate = pickOne<ModRate>(['off', 'slow', 'med', 'fast']);
-  const modDepth = modRate === 'off' ? 0 : Math.floor(Math.random() * 51);
+  const modDepth = modRate === 'off' ? 0 : (
+    strength === 'low' ? rangeInt(6, 30) : strength === 'medium' ? rangeInt(10, 54) : rangeInt(14, 72)
+  );
   const modTarget = pickOne<ModTarget>(['velocity', 'duration', 'pitch']);
-  const growthStyle: GrowthStyle = Math.random() < 0.65 ? 'build' : 'flat';
+  const growthStyle: GrowthStyle = strengthChance(strength, 0.55, 0.65, 0.72) ? 'build' : 'flat';
   const durationStretch = pickOne([1, 1.25, 1.5, 2]);
   const timingFeel = pickOne<TimingFeel>(['tight', 'human', 'offbeat', 'loose']);
-  const timingAmount = timingFeel === 'tight' ? 0 : Math.floor(Math.random() * 56);
+  const timingAmount = timingFeel === 'tight'
+    ? 0
+    : strength === 'low' ? rangeInt(6, 26) : strength === 'medium' ? rangeInt(10, 44) : rangeInt(16, 62);
 
   const backing: BackingControls = mode === 'backing'
     ? {
         drums: true,
-        bass: Math.random() < 0.7,
-        clap: Math.random() < 0.6,
-        openHat: Math.random() < 0.55,
-        perc: Math.random() < 0.45,
-        metronome: Math.random() < 0.5 ? 'count-in' : 'off',
-        swing: isTech ? Math.floor(Math.random() * 24) : Math.floor(Math.random() * 16),
+        bass: strengthChance(strength, 0.55, 0.72, 0.85),
+        clap: strengthChance(strength, 0.42, 0.56, 0.72),
+        openHat: strengthChance(strength, 0.35, 0.55, 0.7),
+        perc: strengthChance(strength, 0.25, 0.45, 0.62),
+        metronome: strengthChance(strength, 0.45, 0.35, 0.2) ? 'count-in' : 'off',
+        swing: isTech ? rangeInt(2, strength === 'wild' ? 30 : 22) : rangeInt(0, strength === 'wild' ? 22 : 14),
         gate: pickOne<GateStyle>(['tight', 'balanced', 'long']),
-        mutate: Math.floor(Math.random() * 22),
-        deviate: Math.floor(Math.random() * 20),
+        mutate: strength === 'low' ? rangeInt(0, 14) : strength === 'medium' ? rangeInt(4, 24) : rangeInt(8, 40),
+        deviate: strength === 'low' ? rangeInt(0, 12) : strength === 'medium' ? rangeInt(4, 20) : rangeInt(8, 32),
       }
     : {
         drums: false,
@@ -276,9 +381,52 @@ function surprisePreset(theme: string): {
         deviate: 0,
       };
 
+  const recordProfile: 'default' | 'vinyl' | 'dust' = pickOne(['default', 'vinyl', 'dust']);
+  const recordFamily: 'character' | 'motion' | 'space' | 'bug' = source === 'record'
+    ? (strength === 'low' ? pickOne(['character', 'motion', 'space']) : pickOne(['character', 'motion', 'space', 'bug']))
+    : 'bug';
+  const recordBugMode: 'off' | 'pll-drift' | 'buffer-tear' | 'clock-bleed' | 'memory-rot' | 'crc-glitch' =
+    recordFamily === 'bug'
+      ? (strength === 'low'
+        ? pickOne(['pll-drift', 'buffer-tear'])
+        : strength === 'medium'
+          ? pickOne(['pll-drift', 'buffer-tear', 'clock-bleed', 'memory-rot'])
+          : pickOne(['pll-drift', 'buffer-tear', 'clock-bleed', 'memory-rot', 'crc-glitch']))
+      : 'off';
+
+  const recordIntensity = recordFamily === 'bug'
+    ? (strength === 'low' ? rangeInt(18, 44) : strength === 'medium' ? rangeInt(30, 62) : rangeInt(45, 84))
+    : (source === 'record' ? rangeInt(20, 58) : 0);
+  const recordMix = recordFamily === 'bug'
+    ? (strength === 'low' ? rangeInt(18, 42) : strength === 'medium' ? rangeInt(26, 56) : rangeInt(34, 70))
+    : (source === 'record' ? rangeInt(20, 50) : 0);
+  const recordChaos = recordFamily === 'bug'
+    ? (strength === 'low' ? rangeInt(10, 32) : strength === 'medium' ? rangeInt(16, 46) : rangeInt(24, 72))
+    : (source === 'record' ? rangeInt(8, 36) : 0);
+  const recordScratch: 'off' | 'texture' | 'dj' = source === 'record'
+    ? (strength === 'low' ? pickOne(['off', 'texture']) : pickOne(['off', 'texture', 'dj']))
+    : 'off';
+  const recordWavy = source === 'record'
+    ? (strength === 'low' ? rangeInt(8, 34) : strength === 'medium' ? rangeInt(14, 52) : rangeInt(24, 72))
+    : 0;
+
+  const length = surpriseLength();
+  const bpm = surpriseBpm(theme);
+  const seedPitch = surpriseSeed();
+  const exportAudio: 'none' | 'mp3' | 'mp4' = 'mp4';
+  const exportStems = true;
+  const openAfterExport: 'none' | 'finder' | 'garageband' = 'finder';
+  const rationale = [
+    source === 'record' ? 'Picked Record Player for character rendering.' : 'Picked Generate for direct melodic flow.',
+    mode === 'backing' ? 'Enabled backing for fuller arrangement.' : 'Kept single-track focus.',
+    recordFamily === 'bug' ? `Bug mode ${recordBugMode} selected for controlled instability.` : `Using ${recordFamily} FX family for texture.`,
+  ].join(' ');
+
   return {
+    source,
     mode,
     instrument,
+    eqMode,
     fxPreset,
     decayStyle,
     transpose,
@@ -292,6 +440,21 @@ function surprisePreset(theme: string): {
     timingFeel,
     timingAmount,
     backing,
+    recordProfile,
+    recordFamily,
+    recordBugMode,
+    recordIntensity,
+    recordChaos,
+    recordMix,
+    recordScratch,
+    recordWavy,
+    openAfterExport,
+    exportAudio,
+    exportStems,
+    length,
+    bpm,
+    seedPitch,
+    rationale,
   };
 }
 
@@ -619,6 +782,58 @@ async function pickBpm(
   return selected;
 }
 
+async function pickBoundedNumber(
+  selectPrompt: SelectPromptFn,
+  inputPrompt: InputPromptFn,
+  opts: {
+    message: string;
+    fallback: number;
+    min: number;
+    max: number;
+    presets?: number[];
+    fractions?: number[];
+    customLabel?: string;
+    customMessage?: string;
+  },
+): Promise<number> {
+  const fractionValues = (opts.fractions ?? [0, 0.25, 0.5, 0.75, 1]).map((f) =>
+    Math.round(opts.min + (opts.max - opts.min) * Math.max(0, Math.min(1, f))),
+  );
+  const presetValues = [...new Set([...(opts.presets ?? []), ...fractionValues])]
+    .filter((v) => v >= opts.min && v <= opts.max)
+    .sort((a, b) => a - b);
+
+  const choices = [
+    { value: -1, name: opts.customLabel ?? 'Custom', description: `Type ${opts.min}..${opts.max}` },
+    ...presetValues.map((value) => ({
+      value,
+      name: String(value),
+      description: value === opts.fallback ? 'Current default' : undefined,
+    })),
+  ];
+
+  const selected = (await selectPrompt({
+    message: opts.message,
+    choices,
+    default: presetValues.includes(opts.fallback) ? opts.fallback : -1,
+    theme: inquirerTheme,
+  })) as number;
+
+  if (selected !== -1) return selected;
+  const custom = await inputPrompt({
+    message: opts.customMessage ?? `${opts.message} (${opts.min}..${opts.max})`,
+    default: String(opts.fallback),
+    validate: (value: string) => {
+      const parsed = Number.parseInt(value, 10);
+      if (!Number.isFinite(parsed)) return 'Enter a number';
+      if (parsed < opts.min || parsed > opts.max) return `Must be ${opts.min}..${opts.max}`;
+      return true;
+    },
+    theme: inquirerTheme,
+  });
+  return asBoundedInt(custom, opts.fallback, opts.min, opts.max);
+}
+
 export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
   console.log(`\n${color('OpenNote CLI Setup', `${c.bold}${palette.primary}`)}`);
   console.log(color('Use arrow keys and Enter.', `${c.dim}${palette.soft}`));
@@ -663,11 +878,22 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
     })) as SetupPath;
 
     if (setupPath === 'surprise') {
+      const surpriseStrength = (await selectPrompt({
+        message: 'Surprise strength',
+        choices: SURPRISE_STRENGTH_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: 'medium',
+        theme: inquirerTheme,
+      })) as SurpriseStrength;
       const theme = surpriseTheme();
-      const picked = surprisePreset(theme);
+      const picked = surprisePreset(theme, surpriseStrength);
       const config: CliConfig = {
         provider,
         providerAuth,
+        source: picked.source,
         mode: picked.mode,
         instrument: picked.instrument,
         fxPreset: picked.fxPreset,
@@ -684,23 +910,42 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         timingAmount: picked.timingAmount,
         backing: picked.backing,
         theme,
-        length: surpriseLength(),
-        bpm: surpriseBpm(theme),
-        seedPitch: surpriseSeed(),
+        length: picked.length,
+        bpm: picked.bpm,
+        seedPitch: picked.seedPitch,
         seedSource: 'manual',
         beep: false,
-        openAfterExport: defaults.openAfterExport,
-        exportAudio: defaults.exportAudio === 'none' ? 'mp4' : defaults.exportAudio,
-        exportStems: defaults.exportAudio === 'none' ? true : defaults.exportStems,
+        openAfterExport: picked.openAfterExport,
+        exportAudio: picked.exportAudio,
+        exportStems: picked.exportStems,
+        eqMode: picked.eqMode,
+        recordDevice: defaults.recordDevice,
+        recordSeconds: defaults.recordSeconds,
+        recordMonitor: defaults.recordMonitor,
+        recordProfile: picked.recordProfile,
+        recordFamily: picked.recordFamily,
+        recordBugMode: picked.recordBugMode,
+        recordIntensity: picked.recordIntensity,
+        recordChaos: picked.recordChaos,
+        recordMix: picked.recordMix,
+        recordScratch: picked.recordScratch,
+        recordWavy: picked.recordWavy,
       };
 
       section('Surprise Setup', 'Auto-picked configuration. Starting generation now.');
+      console.log(color(`Strength:   ${surpriseStrength}`, `${c.dim}${palette.soft}`));
       console.log(color(`Theme:      ${config.theme}`, `${c.dim}${palette.soft}`));
+      console.log(color(`Source:     ${config.source}`, `${c.dim}${palette.soft}`));
       console.log(color(`Mode:       ${config.mode}`, `${c.dim}${palette.soft}`));
       console.log(color(`Instrument: ${config.instrument}`, `${c.dim}${palette.soft}`));
+      console.log(color(`EQ:         ${config.eqMode}`, `${c.dim}${palette.soft}`));
       console.log(color(`FX:         ${config.fxPreset} / ${config.decayStyle}`, `${c.dim}${palette.soft}`));
       console.log(color(`Length/BPM: ${config.length} / ${config.bpm}`, `${c.dim}${palette.soft}`));
       console.log(color(`Seed pitch: ${config.seedPitch}`, `${c.dim}${palette.soft}`));
+      if (config.source === 'record' || config.recordBugMode !== 'off') {
+        console.log(color(`Record FX:  ${config.recordFamily} / ${config.recordBugMode} / ${config.recordScratch}`, `${c.dim}${palette.soft}`));
+      }
+      console.log(color(`Rationale:  ${picked.rationale}`, `${c.dim}${palette.soft}`));
       console.log('');
       return config;
     }
@@ -718,22 +963,23 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       const bpm = await pickBpm((cfg) => selectPrompt(cfg) as Promise<number>, inputPrompt, defaults.bpm);
 
       section('5) Input', 'Basic path uses manual seed input.');
-      const seedRaw = await inputPrompt({
-        message: 'Seed pitch MIDI 0-127',
-        default: String(defaults.seedPitch),
-        validate: (value: string) => {
-          const parsed = Number.parseInt(value, 10);
-          if (!Number.isFinite(parsed)) return 'Enter a number';
-          if (parsed < 0 || parsed > 127) return 'Must be 0..127';
-          return true;
+      const seedPitch = await pickBoundedNumber(
+        (cfg) => selectPrompt(cfg) as Promise<number>,
+        inputPrompt,
+        {
+          message: 'Choose note (MIDI 0..127)',
+          fallback: defaults.seedPitch,
+          min: 0,
+          max: 127,
+          fractions: [0, 0.25, 0.5, 0.75, 1],
+          customMessage: 'Custom note (MIDI 0..127)',
         },
-        theme: inquirerTheme,
-      });
-      const seedPitch = asMidiPitch(seedRaw.trim(), defaults.seedPitch);
+      );
 
       const config: CliConfig = {
         provider,
         providerAuth,
+        source: 'generated',
         mode: 'single',
         instrument: 'lead',
         fxPreset: 'clean',
@@ -769,6 +1015,18 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         openAfterExport: 'finder',
         exportAudio: 'mp4',
         exportStems: true,
+        eqMode: defaults.eqMode,
+        recordDevice: defaults.recordDevice,
+        recordSeconds: defaults.recordSeconds,
+        recordMonitor: defaults.recordMonitor,
+        recordProfile: defaults.recordProfile,
+        recordFamily: defaults.recordFamily,
+        recordBugMode: defaults.recordBugMode,
+        recordIntensity: defaults.recordIntensity,
+        recordChaos: defaults.recordChaos,
+        recordMix: defaults.recordMix,
+        recordScratch: defaults.recordScratch,
+        recordWavy: defaults.recordWavy,
       };
 
       section('Basic Setup', 'Using quick defaults. Starting generation now.');
@@ -780,10 +1038,23 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       return config;
     }
 
+    let source = defaults.source;
     let mode = defaults.mode;
     let instrument = defaults.instrument;
     let fxPreset = defaults.fxPreset;
     let decayStyle = defaults.decayStyle;
+    let recordDevice = defaults.recordDevice;
+    let recordSeconds = defaults.recordSeconds;
+    let recordMonitor = defaults.recordMonitor;
+    let recordProfile = defaults.recordProfile;
+    let recordFamily = defaults.recordFamily;
+    let recordBugMode = defaults.recordBugMode;
+    let recordIntensity = defaults.recordIntensity;
+    let recordChaos = defaults.recordChaos;
+    let recordMix = defaults.recordMix;
+    let recordScratch = defaults.recordScratch;
+    let recordWavy = defaults.recordWavy;
+    let eqMode = defaults.eqMode;
 
     section('3) Mode', 'Single track keeps it minimal. AI backing reveals arrangement controls.');
     mode = (await selectPrompt({
@@ -809,28 +1080,162 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       theme: inquirerTheme,
     })) as InstrumentName;
 
-    section('5) FX', 'Choose tone shaping profile and decay behavior.');
-    fxPreset = (await selectPrompt({
-      message: 'FX preset',
-      choices: FX_PRESET_OPTIONS.map((option) => ({
+    section('5) Source', 'Choose output style for the generated take.');
+    source = (await selectPrompt({
+      message: 'Source',
+      choices: SOURCE_OPTIONS.map((option) => ({
         value: option.value,
         name: option.label,
         description: option.help,
       })),
-      default: defaults.fxPreset,
+      default: defaults.source,
       theme: inquirerTheme,
-    })) as FxPresetName;
+    })) as 'generated' | 'record';
 
-    decayStyle = (await selectPrompt({
-      message: 'Decay style',
-      choices: DECAY_OPTIONS.map((option) => ({
+    section('5b) EQ', 'General output equalizer profile.');
+    eqMode = (await selectPrompt({
+      message: 'EQ mode',
+      choices: EQ_MODE_OPTIONS.map((option) => ({
         value: option.value,
         name: option.label,
         description: option.help,
       })),
-      default: defaults.decayStyle,
+      default: defaults.eqMode,
       theme: inquirerTheme,
-    })) as DecayStyle;
+    })) as 'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone';
+
+    if (source === 'generated') {
+      section('6) FX', 'Choose tone shaping profile and decay behavior.');
+      fxPreset = (await selectPrompt({
+        message: 'FX preset',
+        choices: FX_PRESET_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: defaults.fxPreset,
+        theme: inquirerTheme,
+      })) as FxPresetName;
+
+      decayStyle = (await selectPrompt({
+        message: 'Decay style',
+        choices: DECAY_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: defaults.decayStyle,
+        theme: inquirerTheme,
+      })) as DecayStyle;
+
+      section('6b) Experimental', 'Optional post-render bug mode (works in Generate too).');
+      recordBugMode = (await selectPrompt({
+        message: 'Bug mode',
+        choices: BUG_MODE_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: defaults.recordBugMode,
+        theme: inquirerTheme,
+      })) as 'off' | 'pll-drift' | 'buffer-tear' | 'clock-bleed' | 'memory-rot' | 'crc-glitch';
+      if (recordBugMode !== 'off') {
+        recordFamily = 'bug';
+        recordIntensity = await pickBoundedNumber(
+          (cfg) => selectPrompt(cfg) as Promise<number>,
+          inputPrompt,
+          { message: 'Bug intensity (0..100)', fallback: defaults.recordIntensity, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+        );
+        recordMix = await pickBoundedNumber(
+          (cfg) => selectPrompt(cfg) as Promise<number>,
+          inputPrompt,
+          { message: 'Bug mix (0..100)', fallback: defaults.recordMix, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+        );
+        recordChaos = await pickBoundedNumber(
+          (cfg) => selectPrompt(cfg) as Promise<number>,
+          inputPrompt,
+          { message: 'Bug chaos (0..100)', fallback: defaults.recordChaos, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+        );
+      } else {
+        recordFamily = 'character';
+        recordIntensity = 0;
+        recordMix = 0;
+        recordChaos = 0;
+      }
+      recordProfile = 'default';
+      recordScratch = 'off';
+      recordWavy = 0;
+    } else {
+      section('6) Record Player', 'Emulate vinyl tone and scratching on rendered audio.');
+      recordProfile = (await selectPrompt({
+        message: 'Record tone',
+        choices: RECORD_PROFILE_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: defaults.recordProfile,
+        theme: inquirerTheme,
+      })) as 'default' | 'vinyl' | 'dust';
+      recordFamily = (await selectPrompt({
+        message: 'FX family',
+        choices: RECORD_FAMILY_OPTIONS.map((option) => ({
+          value: option.value,
+          name: option.label,
+          description: option.help,
+        })),
+        default: defaults.recordFamily,
+        theme: inquirerTheme,
+      })) as 'character' | 'motion' | 'space' | 'bug';
+      if (recordFamily === 'bug') {
+        recordBugMode = (await selectPrompt({
+          message: 'Bug mode',
+          choices: BUG_MODE_OPTIONS.map((option) => ({
+            value: option.value,
+            name: option.label,
+            description: option.help,
+          })),
+          default: defaults.recordBugMode,
+          theme: inquirerTheme,
+        })) as 'off' | 'pll-drift' | 'buffer-tear' | 'clock-bleed' | 'memory-rot' | 'crc-glitch';
+      } else {
+        recordBugMode = 'off';
+      }
+      const scratchRaw = (await selectPrompt({
+        message: 'Scratch technique',
+        choices: [
+          { value: 'off', name: 'Off', description: 'No scratch texture.' },
+          { value: 'texture', name: 'Texture', description: 'Subtle scratch character.' },
+          { value: 'dj', name: 'DJ Scratch', description: 'Stronger replay-style scratch motion.' },
+        ],
+        default: defaults.recordScratch,
+        theme: inquirerTheme,
+      })) as 'off' | 'texture' | 'dj';
+      recordScratch = scratchRaw;
+      recordWavy = await pickBoundedNumber(
+        (cfg) => selectPrompt(cfg) as Promise<number>,
+        inputPrompt,
+        { message: 'Wobble amount (0..100)', fallback: defaults.recordWavy, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+      );
+      recordIntensity = await pickBoundedNumber(
+        (cfg) => selectPrompt(cfg) as Promise<number>,
+        inputPrompt,
+        { message: 'FX intensity (0..100)', fallback: defaults.recordIntensity, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+      );
+      recordMix = await pickBoundedNumber(
+        (cfg) => selectPrompt(cfg) as Promise<number>,
+        inputPrompt,
+        { message: 'FX mix (0..100)', fallback: defaults.recordMix, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+      );
+      recordChaos = await pickBoundedNumber(
+        (cfg) => selectPrompt(cfg) as Promise<number>,
+        inputPrompt,
+        { message: 'Chaos (0..100)', fallback: defaults.recordChaos, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+      );
+      recordDevice = '';
+      recordSeconds = defaults.recordSeconds;
+      recordMonitor = false;
+    }
 
     let transpose = defaults.transpose;
     let pitchRange = defaults.pitchRange;
@@ -858,7 +1263,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         };
 
     if (setupPath === 'advanced') {
-      section('6) Pitch', 'Transpose and range controls with optional scale snap.');
+      section('7) Pitch', 'Transpose and range controls with optional scale snap.');
       const transposeDirection = (await selectPrompt({
         message: 'Transpose direction',
         choices: [
@@ -908,7 +1313,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       })) as 'on' | 'off';
       snapScale = snapScaleRaw === 'on';
 
-      section('7) Modulate', 'Add movement to velocity, duration, or pitch.');
+      section('8) Modulate', 'Add movement to velocity, duration, or pitch.');
       modRate = (await selectPrompt({
         message: 'Modulation rate',
         choices: MOD_RATE_OPTIONS.map((option) => ({
@@ -920,18 +1325,11 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         theme: inquirerTheme,
       })) as ModRate;
 
-      const modDepthRaw = await inputPrompt({
-        message: 'Modulation depth (0..100)',
-        default: String(defaults.modDepth),
-        validate: (value: string) => {
-          const parsed = Number.parseInt(value, 10);
-          if (!Number.isFinite(parsed)) return 'Enter a number';
-          if (parsed < 0 || parsed > 100) return 'Must be 0..100';
-          return true;
-        },
-        theme: inquirerTheme,
-      });
-      modDepth = asBoundedInt(modDepthRaw, defaults.modDepth, 0, 100);
+      modDepth = await pickBoundedNumber(
+        (cfg) => selectPrompt(cfg) as Promise<number>,
+        inputPrompt,
+        { message: 'Modulation depth (0..100)', fallback: defaults.modDepth, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+      );
 
       modTarget = (await selectPrompt({
         message: 'Modulation target',
@@ -944,7 +1342,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         theme: inquirerTheme,
       })) as ModTarget;
 
-      section('8) Movement', 'Control song growth over time and overall note length.');
+      section('9) Movement', 'Control song growth over time and overall note length.');
       growthStyle = (await selectPrompt({
         message: 'Growth over time',
         choices: GROWTH_OPTIONS.map((option) => ({
@@ -978,21 +1376,14 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         theme: inquirerTheme,
       })) as TimingFeel;
 
-      const timingAmountRaw = await inputPrompt({
-        message: 'Timing amount (0..100)',
-        default: String(defaults.timingAmount),
-        validate: (value: string) => {
-          const parsed = Number.parseInt(value, 10);
-          if (!Number.isFinite(parsed)) return 'Enter a number';
-          if (parsed < 0 || parsed > 100) return 'Must be 0..100';
-          return true;
-        },
-        theme: inquirerTheme,
-      });
-      timingAmount = asBoundedInt(timingAmountRaw, defaults.timingAmount, 0, 100);
+      timingAmount = await pickBoundedNumber(
+        (cfg) => selectPrompt(cfg) as Promise<number>,
+        inputPrompt,
+        { message: 'Timing amount (0..100)', fallback: defaults.timingAmount, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+      );
 
       if (mode === 'backing') {
-        section('9) Backing', 'Enable drums/bass and shape groove behavior.');
+        section('10) Backing', 'Enable drums/bass and shape groove behavior.');
         const drumsRaw = (await selectPrompt({
           message: 'Drums',
           choices: [
@@ -1059,39 +1450,21 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
           theme: inquirerTheme,
         })) as GateStyle;
 
-        const swingRaw = await inputPrompt({
-          message: 'Swing (0..100)',
-          default: String(defaults.backing.swing),
-          validate: (value: string) => {
-            const parsed = Number.parseInt(value, 10);
-            if (!Number.isFinite(parsed)) return 'Enter a number';
-            if (parsed < 0 || parsed > 100) return 'Must be 0..100';
-            return true;
-          },
-          theme: inquirerTheme,
-        });
-        const mutateRaw = await inputPrompt({
-          message: 'Mutate (0..100)',
-          default: String(defaults.backing.mutate),
-          validate: (value: string) => {
-            const parsed = Number.parseInt(value, 10);
-            if (!Number.isFinite(parsed)) return 'Enter a number';
-            if (parsed < 0 || parsed > 100) return 'Must be 0..100';
-            return true;
-          },
-          theme: inquirerTheme,
-        });
-        const deviateRaw = await inputPrompt({
-          message: 'Deviate (0..100)',
-          default: String(defaults.backing.deviate),
-          validate: (value: string) => {
-            const parsed = Number.parseInt(value, 10);
-            if (!Number.isFinite(parsed)) return 'Enter a number';
-            if (parsed < 0 || parsed > 100) return 'Must be 0..100';
-            return true;
-          },
-          theme: inquirerTheme,
-        });
+        const swing = await pickBoundedNumber(
+          (cfg) => selectPrompt(cfg) as Promise<number>,
+          inputPrompt,
+          { message: 'Swing (0..100)', fallback: defaults.backing.swing, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+        );
+        const mutate = await pickBoundedNumber(
+          (cfg) => selectPrompt(cfg) as Promise<number>,
+          inputPrompt,
+          { message: 'Mutate (0..100)', fallback: defaults.backing.mutate, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+        );
+        const deviate = await pickBoundedNumber(
+          (cfg) => selectPrompt(cfg) as Promise<number>,
+          inputPrompt,
+          { message: 'Deviate (0..100)', fallback: defaults.backing.deviate, min: 0, max: 100, fractions: [0, 0.2, 0.4, 0.6, 0.8, 1] },
+        );
 
         backing = {
           drums: drumsRaw === 'on',
@@ -1100,25 +1473,21 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
           openHat: openHatRaw === 'on',
           perc: percRaw === 'on',
           metronome,
-          swing: asBoundedInt(swingRaw, defaults.backing.swing, 0, 100),
+          swing,
           gate,
-          mutate: asBoundedInt(mutateRaw, defaults.backing.mutate, 0, 100),
-          deviate: asBoundedInt(deviateRaw, defaults.backing.deviate, 0, 100),
+          mutate,
+          deviate,
         };
       }
     }
 
-    section('9) Style', 'Choose a preset music category or custom theme.');
+    section('11) Style', 'Choose a preset music category or custom theme.');
     const theme = await pickTheme((cfg) => selectPrompt(cfg) as Promise<string>, inputPrompt, defaults.theme);
-    section('10) Structure', 'Set length and tempo.');
-    const length = await pickLength(
-      (cfg) => selectPrompt(cfg) as Promise<number>,
-      inputPrompt,
-      defaults.length,
-    );
+    section('12) Structure', 'Set length and tempo.');
+    const length = await pickLength((cfg) => selectPrompt(cfg) as Promise<number>, inputPrompt, defaults.length);
     const bpm = await pickBpm((cfg) => selectPrompt(cfg) as Promise<number>, inputPrompt, defaults.bpm);
-    section('11) Input', setupPath === 'advanced' ? 'Choose seed note input mode.' : 'Basic path uses manual seed input.');
-    const seedSource = setupPath === 'advanced'
+
+    let seedSource = setupPath === 'advanced'
       ? (await selectPrompt({
           message: 'Seed input mode',
           choices: SEED_SOURCE_OPTIONS.map((option) => ({
@@ -1132,24 +1501,71 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       : 'manual';
 
     let seedPitch = defaults.seedPitch;
-    if (seedSource === 'manual') {
-      const seedRaw = await inputPrompt({
-        message: 'Seed pitch MIDI 0-127',
-        default: String(defaults.seedPitch),
-        validate: (value: string) => {
-          const parsed = Number.parseInt(value, 10);
-          if (!Number.isFinite(parsed)) return 'Enter a number';
-          if (parsed < 0 || parsed > 127) return 'Must be 0..127';
-          return true;
-        },
+    let seedPitchChosen = false;
+    if (seedSource === 'keyboard') {
+      const keyboardPath = (await selectPrompt({
+        message: 'Keyboard input',
+        choices: [
+          { value: 'keyboard', name: 'Live keyboard capture', description: 'Use 1-8 keys when generation starts.' },
+          { value: 'preset', name: 'Preset note list', description: 'Pick from quick MIDI note presets.' },
+          { value: 'custom', name: 'Custom MIDI value', description: 'Type a note value directly.' },
+        ],
+        default: 'keyboard',
         theme: inquirerTheme,
-      });
-      seedPitch = asMidiPitch(seedRaw.trim(), defaults.seedPitch);
+      })) as 'keyboard' | 'preset' | 'custom';
+
+      if (keyboardPath === 'preset') {
+        seedPitch = await pickBoundedNumber(
+          (cfg) => selectPrompt(cfg) as Promise<number>,
+          inputPrompt,
+          {
+            message: 'Choose note (MIDI 0..127)',
+            fallback: defaults.seedPitch,
+            min: 0,
+            max: 127,
+            fractions: [0, 0.25, 0.5, 0.75, 1],
+            customMessage: 'Custom note (MIDI 0..127)',
+          },
+        );
+        seedSource = 'manual';
+        seedPitchChosen = true;
+      } else if (keyboardPath === 'custom') {
+        seedPitch = await pickBoundedNumber(
+          (cfg) => selectPrompt(cfg) as Promise<number>,
+          inputPrompt,
+          {
+            message: 'Choose note (MIDI 0..127)',
+            fallback: defaults.seedPitch,
+            min: 0,
+            max: 127,
+            fractions: [],
+            customMessage: 'Custom note (MIDI 0..127)',
+          },
+        );
+        seedSource = 'manual';
+        seedPitchChosen = true;
+      }
+    }
+
+    if (seedSource === 'manual' && !seedPitchChosen) {
+      section('13) Input', setupPath === 'advanced' ? 'Choose seed note input mode.' : 'Basic path uses manual seed input.');
+      seedPitch = await pickBoundedNumber(
+        (cfg) => selectPrompt(cfg) as Promise<number>,
+        inputPrompt,
+        {
+          message: 'Choose note (MIDI 0..127)',
+          fallback: defaults.seedPitch,
+          min: 0,
+          max: 127,
+          fractions: [0, 0.25, 0.5, 0.75, 1],
+          customMessage: 'Custom note (MIDI 0..127)',
+        },
+      );
     }
 
     const beep = false;
 
-    section('12) Export Open Action', 'What should happen right after MIDI export?');
+    section('14) Export Open Action', 'What should happen right after export?');
     const openAfterExport = (await selectPrompt({
       message: 'After export',
       choices: OPEN_AFTER_EXPORT_OPTIONS.map((option) => ({
@@ -1161,10 +1577,11 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       theme: inquirerTheme,
     })) as 'none' | 'finder' | 'garageband';
 
-    section('13) Export Media Format', 'Optional extra export format when you choose export actions.');
+    section('15) Export Media Format', 'Optional extra export format when you choose export actions.');
+    const exportAudioOptions = source === 'record' ? EXPORT_AUDIO_RECORD_OPTIONS : EXPORT_AUDIO_OPTIONS;
     const exportAudio = (await selectPrompt({
       message: 'Export profile',
-      choices: EXPORT_AUDIO_OPTIONS.map((option) => ({
+      choices: exportAudioOptions.map((option) => ({
         value: option.value,
         name: option.label,
         description: option.help,
@@ -1176,6 +1593,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
     const config = {
       provider,
       providerAuth,
+      source,
       mode,
       instrument,
       fxPreset,
@@ -1200,12 +1618,25 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       openAfterExport,
       exportAudio,
       exportStems: exportAudio === 'none' ? defaults.exportStems : true,
+      eqMode,
+      recordDevice,
+      recordSeconds,
+      recordMonitor,
+      recordProfile,
+      recordFamily,
+      recordBugMode,
+      recordIntensity,
+      recordChaos,
+      recordMix,
+      recordScratch,
+      recordWavy,
     };
 
     section('Summary');
     console.log(color(`Provider:   ${config.provider}`, `${c.dim}${palette.soft}`));
     console.log(color(`Auth:       ${config.providerAuth}`, `${c.dim}${palette.soft}`));
     console.log(color(`Path:       ${setupPath}`, `${c.dim}${palette.soft}`));
+    console.log(color(`Source:     ${config.source}`, `${c.dim}${palette.soft}`));
     console.log(color(`Mode:       ${config.mode}`, `${c.dim}${palette.soft}`));
     console.log(color(`Instrument: ${config.instrument}`, `${c.dim}${palette.soft}`));
     console.log(color(`FX preset:  ${config.fxPreset}`, `${c.dim}${palette.soft}`));
@@ -1215,7 +1646,22 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
     console.log(color(`Growth:     ${config.growthStyle}`, `${c.dim}${palette.soft}`));
     console.log(color(`Duration:   ${config.durationStretch}x`, `${c.dim}${palette.soft}`));
     console.log(color(`Timing:     ${config.timingFeel} (${config.timingAmount})`, `${c.dim}${palette.soft}`));
-    if (config.mode === 'backing') {
+    console.log(color(`EQ mode:    ${config.eqMode}`, `${c.dim}${palette.soft}`));
+    if (config.source === 'record' || config.recordBugMode !== 'off') {
+      console.log(color(`Record tone: ${config.recordProfile}`, `${c.dim}${palette.soft}`));
+      console.log(color(`FX family:  ${config.recordFamily}`, `${c.dim}${palette.soft}`));
+      if (config.recordFamily === 'bug' || config.recordBugMode !== 'off') {
+        console.log(color(`Bug mode:   ${config.recordBugMode}`, `${c.dim}${palette.soft}`));
+      }
+      if (config.source === 'record') {
+        console.log(color(`Scratch:    ${config.recordScratch}`, `${c.dim}${palette.soft}`));
+        console.log(color(`Wobble FX:  ${config.recordWavy}`, `${c.dim}${palette.soft}`));
+      }
+      console.log(color(`Intensity:  ${config.recordIntensity}`, `${c.dim}${palette.soft}`));
+      console.log(color(`Mix:        ${config.recordMix}`, `${c.dim}${palette.soft}`));
+      console.log(color(`Chaos:      ${config.recordChaos}`, `${c.dim}${palette.soft}`));
+    }
+    if (config.mode === 'backing' && config.source === 'generated') {
       console.log(
         color(
           `Backing:    drums ${config.backing.drums ? 'on' : 'off'}, bass ${config.backing.bass ? 'on' : 'off'}, metronome ${config.backing.metronome}`,

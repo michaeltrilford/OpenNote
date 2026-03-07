@@ -1,7 +1,13 @@
 import { dirname, extname, join, basename } from 'node:path';
 import { unlink } from 'node:fs/promises';
 import { exportSequenceToMidi } from './exportMidi';
-import { exportSequenceToWav, exportWavToMp3, exportWavToMp4, isFfmpegMissing } from './exportAudio';
+import {
+  exportSequenceToWav,
+  exportWavToMp3,
+  exportWavToMp4,
+  isFfmpegMissing,
+  processRecordedWav,
+} from './exportAudio';
 import {
   applyGrowthAndDuration,
   applyTimingFeel,
@@ -97,6 +103,14 @@ function boolArg(name: string, fallback: boolean): boolean {
   return fallback;
 }
 
+function recordScratchArg(name: string, fallback: 'off' | 'texture' | 'dj'): 'off' | 'texture' | 'dj' {
+  const raw = arg(name, fallback).trim().toLowerCase();
+  if (raw === 'off' || raw === 'false' || raw === '0' || raw === 'no') return 'off';
+  if (raw === 'texture' || raw === 'on' || raw === 'true' || raw === '1' || raw === 'yes') return 'texture';
+  if (raw === 'dj' || raw === 'replay' || raw === 'scratch') return 'dj';
+  return fallback;
+}
+
 function intArg(name: string, fallback: number, min: number, max: number): number {
   const raw = Number.parseInt(arg(name, String(fallback)), 10);
   if (!Number.isFinite(raw)) return fallback;
@@ -139,13 +153,17 @@ function openActionLabel(openAfterExport: OpenAfterExport): string {
   return 'do nothing after export';
 }
 
-async function promptPostRunAction(openAfterExport: OpenAfterExport): Promise<PostRunAction> {
+async function promptPostRunAction(
+  openAfterExport: OpenAfterExport,
+  source: 'generated' | 'record',
+): Promise<PostRunAction> {
   const inquirer = await import('@inquirer/prompts');
+  const exportLabel = source === 'record' ? 'Export MIDI (record-player FX)' : 'Export MIDI';
   const selection = await inquirer.select({
     message: `Next action (export will ${openActionLabel(openAfterExport)})`,
     choices: [
-      { value: 'export-finish', name: `Export MIDI + ${openActionLabel(openAfterExport)} + finish` },
-      { value: 'export-retry', name: `Export MIDI + ${openActionLabel(openAfterExport)} + retry` },
+      { value: 'export-finish', name: `${exportLabel} + ${openActionLabel(openAfterExport)} + finish` },
+      { value: 'export-retry', name: `${exportLabel} + ${openActionLabel(openAfterExport)} + retry` },
       { value: 'retry', name: 'Retry (new take)' },
       { value: 'finish', name: 'Finish' },
     ],
@@ -169,6 +187,18 @@ async function maybeExportMidi(
   stems: StemGroups,
   coverImagePath: string,
   fx: FxSettings,
+  recordPlayerFx: {
+    enabled: boolean;
+    eqMode: 'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone';
+    profile: 'default' | 'vinyl' | 'dust';
+    family: 'character' | 'motion' | 'space' | 'bug';
+    bugMode: 'off' | 'pll-drift' | 'buffer-tear' | 'clock-bleed' | 'memory-rot' | 'crc-glitch';
+    intensity: number;
+    chaos: number;
+    mix: number;
+    scratch: 'off' | 'texture' | 'dj';
+    wavy: number;
+  },
 ): Promise<string | null> {
   const path = explicitPath ?? defaultMidiPath();
   const written = await exportSequenceToMidi(sequence, bpm, path);
@@ -205,15 +235,50 @@ async function maybeExportMidi(
         : join(dirname(written), basename(written));
       const wavPath = `${baseNoExt}.__temp.wav`;
       const writtenWav = await exportSequenceToWav(sequence, wavPath, fx);
+      let renderWav = writtenWav;
+      let processedWav: string | null = null;
+
+      const shouldProcess = recordPlayerFx.enabled && (
+        recordPlayerFx.eqMode !== 'flat'
+        || recordPlayerFx.profile !== 'default'
+        || recordPlayerFx.family !== 'character'
+        || recordPlayerFx.bugMode !== 'off'
+        || recordPlayerFx.scratch !== 'off'
+        || recordPlayerFx.wavy > 0
+        || recordPlayerFx.intensity > 0
+        || recordPlayerFx.mix > 0
+        || recordPlayerFx.chaos > 0
+      );
+      if (shouldProcess) {
+        try {
+          processedWav = `${baseNoExt}.__recordfx.wav`;
+          renderWav = await processRecordedWav(writtenWav, processedWav, {
+            eqMode: recordPlayerFx.eqMode,
+            profile: recordPlayerFx.profile,
+            family: recordPlayerFx.family,
+            bugMode: recordPlayerFx.bugMode,
+            intensity: recordPlayerFx.intensity,
+            chaos: recordPlayerFx.chaos,
+            mix: recordPlayerFx.mix,
+            scratch: recordPlayerFx.scratch,
+            wavy: recordPlayerFx.wavy,
+          });
+        } catch (fxErr) {
+          processedWav = null;
+          renderWav = writtenWav;
+          console.error(color('Record-player FX failed; exporting without FX.', palette.soft));
+          console.error(fxErr);
+        }
+      }
 
       if (exportAudio === 'mp3') {
         const mp3Path = `${baseNoExt}.mp3`;
-        const writtenMp3 = await exportWavToMp3(writtenWav, mp3Path);
+        const writtenMp3 = await exportWavToMp3(renderWav, mp3Path);
         console.log(color('MP3 exported:', palette.soft), writtenMp3);
         openPath = writtenMp3;
       } else {
         const mp4Path = `${baseNoExt}.mp4`;
-        const writtenMp4 = await exportWavToMp4(writtenWav, mp4Path, coverImagePath);
+        const writtenMp4 = await exportWavToMp4(renderWav, mp4Path, coverImagePath);
         console.log(color('MP4 exported:', palette.soft), writtenMp4);
         openPath = writtenMp4;
       }
@@ -222,6 +287,13 @@ async function maybeExportMidi(
         await unlink(writtenWav);
       } catch {
         // Ignore temp cleanup errors.
+      }
+      if (processedWav) {
+        try {
+          await unlink(processedWav);
+        } catch {
+          // Ignore temp cleanup errors.
+        }
       }
     } catch (err) {
       if (isFfmpegMissing(err)) {
@@ -255,6 +327,7 @@ Non-interactive mode:
 
 Flags:
   --provider=mock|openai|gemini|claude|groq|grok
+  --source=generated|record
   --instrument=lead|bass|pad|keys|drums
   --fx=clean|dark|grime|lush|punch
   --decay=tight|balanced|long
@@ -289,6 +362,15 @@ Flags:
   --open-after-export=none|finder|garageband
   --export-audio=none|mp3|mp4
   --export-stems=true|false
+  --eq-mode=balanced|flat|warm|bright|bass|phone
+  --record-profile=default|vinyl|dust
+  --record-family=character|motion|space|bug
+  --record-bug-mode=off|pll-drift|buffer-tear|clock-bleed|memory-rot|crc-glitch
+  --record-intensity=0..100
+  --record-chaos=0..100
+  --record-mix=0..100
+  --record-scratch=off|texture|dj
+  --record-wavy=0..100
   --no-interactive
   --help
 
@@ -314,7 +396,7 @@ async function main() {
   }
 
   const interactive = !process.argv.includes('--no-interactive');
-  const exportMidiFlag = process.argv.find((a) => a.startsWith('--export-midi='))?.split('=').slice(1).join('=');
+  const exportPathFlag = process.argv.find((a) => a.startsWith('--export-midi='))?.split('=').slice(1).join('=');
   const mode = arg('mode', 'single') as GenerationMode;
   const backing: BackingControls = {
     drums: boolArg('backing-drums', mode === 'backing'),
@@ -331,6 +413,7 @@ async function main() {
   const defaults = {
     provider: arg('provider', 'mock') as ProviderName,
     providerAuth: (arg('provider', 'mock') === 'mock' ? 'none' : 'env') as 'none' | 'env' | 'session',
+    source: arg('source', 'generated') as 'generated' | 'record',
     mode,
     instrument: arg('instrument', 'lead') as InstrumentName,
     fxPreset: arg('fx', 'clean') as FxPresetName,
@@ -355,10 +438,23 @@ async function main() {
     openAfterExport: (arg('open-after-export', 'finder') as OpenAfterExport),
     exportAudio: (arg('export-audio', 'none') as 'none' | 'mp3' | 'mp4'),
     exportStems: boolArg('export-stems', arg('export-audio', 'none') !== 'none'),
+    eqMode: (arg('eq-mode', 'balanced') as 'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone'),
+    recordDevice: '',
+    recordSeconds: 8,
+    recordMonitor: false,
+    recordProfile: (arg('record-profile', 'default') as 'default' | 'vinyl' | 'dust'),
+    recordFamily: (arg('record-family', 'character') as 'character' | 'motion' | 'space' | 'bug'),
+    recordBugMode: (
+      arg('record-bug-mode', 'off') as 'off' | 'pll-drift' | 'buffer-tear' | 'clock-bleed' | 'memory-rot' | 'crc-glitch'
+    ),
+    recordIntensity: intArg('record-intensity', 45, 0, 100),
+    recordChaos: intArg('record-chaos', 25, 0, 100),
+    recordMix: intArg('record-mix', 40, 0, 100),
+    recordScratch: recordScratchArg('record-scratch', 'off'),
+    recordWavy: intArg('record-wavy', 0, 0, 100),
   };
 
   const config = interactive ? await promptCliConfig(defaults) : defaults;
-
   const provider = buildProvider(config.provider);
   let keepRunning = true;
   while (keepRunning) {
@@ -409,6 +505,7 @@ async function main() {
     const playbackEvents = applyTimingFeel(mergedEvents, config.bpm, config.timingFeel, config.timingAmount);
 
     console.log(color('Session', `${c.bold}${palette.primary}`));
+    logKV('Source:', config.source === 'record' ? 'record-player' : 'generated');
     logKV('Provider:', config.provider);
     logKV('Auth:', config.providerAuth);
     logKV('Mode:', config.mode);
@@ -420,6 +517,12 @@ async function main() {
     logKV('Duration:', `${config.durationStretch}x`);
     logKV('Timing:', `${config.timingFeel} (${config.timingAmount})`);
     logKV('Export stems:', config.exportStems ? 'on' : 'off');
+    if (config.source === 'record' || config.recordBugMode !== 'off') {
+      logKV(
+        'Record FX:',
+        `eq ${config.eqMode}, ${config.recordProfile}/${config.recordFamily}, bug ${config.recordBugMode}, scratch ${config.recordScratch}, wobble ${config.recordWavy}, intensity ${config.recordIntensity}, mix ${config.recordMix}, chaos ${config.recordChaos}`,
+      );
+    }
     if (config.mode === 'backing') {
       logKV('Backing:', `drums ${config.backing.drums ? 'on' : 'off'}, bass ${config.backing.bass ? 'on' : 'off'}, metronome ${config.backing.metronome}`);
       logKV('Drum FX:', `clap ${config.backing.clap ? 'on' : 'off'}, open hat ${config.backing.openHat ? 'on' : 'off'}, perc ${config.backing.perc ? 'on' : 'off'}`);
@@ -438,24 +541,36 @@ async function main() {
       bpm: config.bpm,
     });
 
-    if (exportMidiFlag && !interactive) {
+    if (exportPathFlag && !interactive) {
       await maybeExportMidi(
         playbackEvents,
         config.bpm,
-        exportMidiFlag,
+        exportPathFlag,
         config.openAfterExport,
         config.exportAudio,
         config.exportStems,
         stemGroups,
         './src/assets/cover.png',
         fxSettings,
+        {
+          enabled: config.source === 'record' || config.recordBugMode !== 'off',
+          eqMode: config.eqMode,
+          profile: config.recordProfile,
+          family: config.recordFamily,
+          bugMode: config.recordBugMode,
+          intensity: config.recordIntensity,
+          chaos: config.recordChaos,
+          mix: config.recordMix,
+          scratch: config.recordScratch,
+          wavy: config.recordWavy,
+        },
       );
       break;
     }
 
     if (!interactive) break;
 
-    const action = await promptPostRunAction(config.openAfterExport);
+    const action = await promptPostRunAction(config.openAfterExport, config.source);
     if (action === 'finish') {
       keepRunning = false;
       continue;
@@ -476,6 +591,18 @@ async function main() {
         stemGroups,
         './src/assets/cover.png',
         fxSettings,
+        {
+          enabled: config.source === 'record' || config.recordBugMode !== 'off',
+          eqMode: config.eqMode,
+          profile: config.recordProfile,
+          family: config.recordFamily,
+          bugMode: config.recordBugMode,
+          intensity: config.recordIntensity,
+          chaos: config.recordChaos,
+          mix: config.recordMix,
+          scratch: config.recordScratch,
+          wavy: config.recordWavy,
+        },
       );
       keepRunning = false;
       continue;
@@ -491,6 +618,18 @@ async function main() {
       stemGroups,
       './src/assets/cover.png',
       fxSettings,
+      {
+        enabled: config.source === 'record' || config.recordBugMode !== 'off',
+        eqMode: config.eqMode,
+        profile: config.recordProfile,
+        family: config.recordFamily,
+        bugMode: config.recordBugMode,
+        intensity: config.recordIntensity,
+        chaos: config.recordChaos,
+        mix: config.recordMix,
+        scratch: config.recordScratch,
+        wavy: config.recordWavy,
+      },
     );
   }
 

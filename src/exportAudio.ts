@@ -190,11 +190,20 @@ async function getFfmpegBinary(): Promise<string> {
 async function runFfmpeg(args: string[]): Promise<void> {
   const bin = await getFfmpegBinary();
   return new Promise((resolvePromise, reject) => {
-    const p = spawn(bin, args, { stdio: 'ignore' });
+    const p = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stderr = '';
+    if (p.stderr) {
+      p.stderr.on('data', (chunk: Buffer | string) => {
+        stderr += chunk.toString();
+      });
+    }
     p.on('error', reject);
     p.on('close', (code) => {
       if (code === 0) resolvePromise();
-      else reject(new Error(`ffmpeg exited with code ${code ?? -1}`));
+      else {
+        const tail = stderr.trim().split('\n').slice(-8).join('\n');
+        reject(new Error(`ffmpeg exited with code ${code ?? -1}${tail ? `\n${tail}` : ''}`));
+      }
     });
   });
 }
@@ -307,6 +316,184 @@ export async function exportWavToMp4(wavPath: string, outPath: string, coverImag
     return fullPath;
   }
 
+  await runFfmpeg(args);
+  return fullPath;
+}
+
+function detectRecordInput(device?: string): string[] {
+  const d = (device ?? '').trim();
+  if (process.platform === 'darwin') {
+    // avfoundation uses "<video>:<audio>", so audio-only default is ":0".
+    const input = d ? (d.includes(':') ? d : `:${d}`) : ':0';
+    return ['-f', 'avfoundation', '-i', input];
+  }
+  if (process.platform === 'linux') {
+    const input = d || 'default';
+    return ['-f', 'pulse', '-i', input];
+  }
+  if (process.platform === 'win32') {
+    const input = d || 'audio=default';
+    return ['-f', 'dshow', '-i', input];
+  }
+  throw new Error(`Recording is not supported on platform: ${process.platform}`);
+}
+
+export async function recordInputToWav(outPath: string, seconds: number, device?: string): Promise<string> {
+  const fullPath = resolve(outPath);
+  await ensureParent(fullPath);
+  const duration = Math.max(1, Math.floor(seconds));
+  const inputArgs = detectRecordInput(device);
+  await runFfmpeg([
+    '-y',
+    ...inputArgs,
+    '-t',
+    String(duration),
+    '-ac',
+    '1',
+    '-ar',
+    String(SAMPLE_RATE),
+    fullPath,
+  ]);
+  return fullPath;
+}
+
+export async function processRecordedWav(
+  inPath: string,
+  outPath: string,
+  options?: {
+    eqMode?: 'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone';
+    profile?: 'default' | 'vinyl' | 'dust';
+    family?: 'character' | 'motion' | 'space' | 'bug';
+    bugMode?: 'off' | 'pll-drift' | 'buffer-tear' | 'clock-bleed' | 'memory-rot' | 'crc-glitch';
+    intensity?: number;
+    chaos?: number;
+    mix?: number;
+    scratch?: 'off' | 'texture' | 'dj';
+    wavy?: number;
+  },
+): Promise<string> {
+  const fullPath = resolve(outPath);
+  await ensureParent(fullPath);
+  const eqMode = options?.eqMode ?? 'balanced';
+  const profile = options?.profile ?? 'default';
+  const family = options?.family ?? 'character';
+  const bugMode = options?.bugMode ?? 'off';
+  const intensity = Math.max(0, Math.min(100, options?.intensity ?? 45)) / 100;
+  const chaos = Math.max(0, Math.min(100, options?.chaos ?? 25)) / 100;
+  const mix = Math.max(0, Math.min(100, options?.mix ?? 40)) / 100;
+  const fxAmt = Math.max(0, Math.min(1, intensity * (0.25 + mix * 0.75)));
+  const scratch = options?.scratch ?? 'off';
+  const wavyAmount = Math.max(0, Math.min(100, options?.wavy ?? 0));
+  const filters: string[] = [];
+
+  if (profile === 'vinyl') {
+    filters.push('highpass=f=110');
+    filters.push('lowpass=f=7200');
+    filters.push('acompressor=threshold=-20dB:ratio=2.2:attack=10:release=120');
+    filters.push('aecho=0.6:0.3:38:0.12');
+  } else if (profile === 'dust') {
+    filters.push('highpass=f=280');
+    filters.push('lowpass=f=3600');
+    filters.push('acompressor=threshold=-18dB:ratio=3.6:attack=12:release=150');
+    filters.push('acrusher=bits=7:mode=lin:mix=0.22');
+  }
+
+  if (eqMode === 'balanced') {
+    filters.push('highpass=f=35');
+    filters.push('lowpass=f=13000');
+    filters.push('equalizer=f=140:width_type=h:width=90:g=1.6');
+    filters.push('equalizer=f=3300:width_type=h:width=1800:g=1.1');
+  } else if (eqMode === 'warm') {
+    filters.push('lowpass=f=8400');
+    filters.push('equalizer=f=170:width_type=h:width=120:g=2.4');
+    filters.push('equalizer=f=2600:width_type=h:width=1300:g=-1.4');
+  } else if (eqMode === 'bright') {
+    filters.push('highpass=f=45');
+    filters.push('equalizer=f=4600:width_type=h:width=2200:g=2.2');
+    filters.push('equalizer=f=160:width_type=h:width=100:g=-1');
+  } else if (eqMode === 'bass') {
+    filters.push('equalizer=f=95:width_type=h:width=75:g=4');
+    filters.push('equalizer=f=3000:width_type=h:width=1800:g=-1.2');
+  } else if (eqMode === 'phone') {
+    filters.push('highpass=f=350');
+    filters.push('lowpass=f=3200');
+    filters.push('equalizer=f=1500:width_type=h:width=900:g=2.2');
+  }
+
+  if (family === 'character') {
+    const crushBits = Math.max(7, Math.round(16 - fxAmt * 7));
+    const crushMix = (0.06 + fxAmt * 0.18).toFixed(2);
+    filters.push(`acrusher=bits=${crushBits}:mode=lin:mix=${crushMix}`);
+    filters.push('acompressor=threshold=-18dB:ratio=2.2:attack=6:release=80');
+  } else if (family === 'motion') {
+    const tremDepth = (0.08 + fxAmt * 0.42).toFixed(2);
+    const vibDepth = Math.min(0.9, 0.05 + fxAmt * 0.6).toFixed(2);
+    const vibFreq = (2.5 + chaos * 5).toFixed(2);
+    filters.push(`tremolo=f=6:d=${tremDepth}`);
+    filters.push(`vibrato=f=${vibFreq}:d=${vibDepth}`);
+  } else if (family === 'space') {
+    const d1 = Math.round(40 + fxAmt * 120);
+    const d2 = Math.round(80 + fxAmt * 220);
+    const dec1 = (0.12 + fxAmt * 0.35).toFixed(2);
+    const dec2 = (0.08 + fxAmt * 0.24).toFixed(2);
+    filters.push(`aecho=0.7:0.45:${d1}|${d2}:${dec1}|${dec2}`);
+    filters.push('lowpass=f=8200');
+  } else if (family === 'bug' && bugMode !== 'off') {
+    if (bugMode === 'pll-drift') {
+      const vibFreq = (0.45 + chaos * 1.8).toFixed(2);
+      const vibDepth = Math.min(0.8, 0.08 + fxAmt * 0.5).toFixed(2);
+      filters.push(`vibrato=f=${vibFreq}:d=${vibDepth}`);
+      filters.push(`tremolo=f=${(3 + chaos * 6).toFixed(2)}:d=${(0.1 + fxAmt * 0.16).toFixed(2)}`);
+    } else if (bugMode === 'buffer-tear') {
+      const tempo = (1 + (chaos - 0.5) * 0.08).toFixed(3);
+      filters.push(`atempo=${tempo}`);
+      filters.push(`tremolo=f=${(8 + chaos * 14).toFixed(2)}:d=${(0.2 + fxAmt * 0.28).toFixed(2)}`);
+    } else if (bugMode === 'clock-bleed') {
+      const bits = Math.max(4, Math.round(12 - fxAmt * 6));
+      const crushMix = (0.22 + fxAmt * 0.5).toFixed(2);
+      filters.push(`acrusher=bits=${bits}:mode=lin:mix=${crushMix}`);
+      filters.push('highpass=f=260');
+    } else if (bugMode === 'memory-rot') {
+      const lp = Math.round(5200 - fxAmt * 2600);
+      const bits = Math.max(5, Math.round(10 - fxAmt * 4));
+      filters.push(`lowpass=f=${lp}`);
+      filters.push(`acrusher=bits=${bits}:mode=lin:mix=${(0.18 + fxAmt * 0.35).toFixed(2)}`);
+    } else if (bugMode === 'crc-glitch') {
+      filters.push(`tremolo=f=${(14 + chaos * 20).toFixed(2)}:d=${(0.28 + fxAmt * 0.24).toFixed(2)}`);
+      filters.push('highpass=f=900');
+      filters.push('lowpass=f=2400');
+    }
+  }
+
+  if (scratch === 'texture') {
+    filters.push('tremolo=f=9:d=0.35');
+    filters.push('highpass=f=420');
+    filters.push('lowpass=f=3200');
+  } else if (scratch === 'dj') {
+    filters.push('tremolo=f=13:d=0.78');
+    filters.push('asetrate=44100*1.04');
+    filters.push('aresample=44100');
+    filters.push('aecho=0.7:0.45:35|70:0.35|0.15');
+    filters.push('highpass=f=520');
+    filters.push('lowpass=f=2800');
+  }
+  if (wavyAmount > 0) {
+    const tremDepth = (0.08 + (wavyAmount / 100) * 0.42).toFixed(2);
+    // ffmpeg vibrato depth "d" must be in [0, 1].
+    const vibDepth = Math.min(0.95, 0.08 + (wavyAmount / 100) * 0.87).toFixed(2);
+    filters.push(`tremolo=f=4:d=${tremDepth}`);
+    filters.push(`vibrato=f=5:d=${vibDepth}`);
+  }
+
+  // Keep output audible when aggressive FX stacks are selected.
+  filters.push('acompressor=threshold=-16dB:ratio=2:attack=5:release=90:makeup=4');
+  filters.push('alimiter=limit=0.96');
+
+  const args = ['-y', '-i', resolve(inPath)];
+  if (filters.length > 0) {
+    args.push('-af', filters.join(','));
+  }
+  args.push(fullPath);
   await runFfmpeg(args);
   return fullPath;
 }
