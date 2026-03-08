@@ -1,10 +1,10 @@
-import type { LLMProvider } from '../types';
-import { ClaudeProvider } from './claudeProvider';
-import { GeminiProvider } from './geminiProvider';
-import { GrokProvider } from './grokProvider';
-import { GroqProvider } from './groqProvider';
-import { MockProvider } from './mockProvider';
-import { OpenAIProvider } from './openaiProvider';
+import type { LLMProvider } from '../types.js';
+import { ClaudeProvider } from './claudeProvider.js';
+import { GeminiProvider } from './geminiProvider.js';
+import { GrokProvider } from './grokProvider.js';
+import { GroqProvider } from './groqProvider.js';
+import { MockProvider } from './mockProvider.js';
+import { OpenAIProvider } from './openaiProvider.js';
 
 export type ProviderName = 'mock' | 'openai' | 'gemini' | 'claude' | 'groq' | 'grok';
 

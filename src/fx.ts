@@ -1,4 +1,4 @@
-import type { GeneratedNote } from './types';
+import type { GeneratedNote } from './types.js';
 
 export type FxPresetName = 'clean' | 'dark' | 'grime' | 'lush' | 'punch';
 export type DecayStyle = 'tight' | 'balanced' | 'long';

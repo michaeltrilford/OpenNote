@@ -1,4 +1,4 @@
-import type { GeneratedNote } from './types';
+import type { GeneratedNote } from './types.js';
 
 export type InstrumentName = 'lead' | 'bass' | 'pad' | 'keys' | 'drums';
 

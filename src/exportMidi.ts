@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import type { NoteEvent } from './arrangement';
-import type { GeneratedNote } from './types';
+import type { NoteEvent } from './arrangement.js';
+import type { GeneratedNote } from './types.js';
 
 function u32be(n: number): Buffer {
   const b = Buffer.alloc(4);

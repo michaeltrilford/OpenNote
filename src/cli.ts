@@ -1,4 +1,4 @@
-import type { InstrumentName } from './instrument';
+import type { InstrumentName } from './instrument.js';
 import type {
   BackingControls,
   GenerationMode,
@@ -9,9 +9,9 @@ import type {
   ModTarget,
   PitchRange,
   TimingFeel,
-} from './arrangement';
-import type { DecayStyle, FxPresetName } from './fx';
-import type { ProviderName } from './providers/factory';
+} from './arrangement.js';
+import type { DecayStyle, FxPresetName } from './fx.js';
+import type { ProviderName } from './providers/factory.js';
 
 export type CliConfig = {
   provider: ProviderName;

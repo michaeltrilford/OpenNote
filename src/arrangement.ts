@@ -1,4 +1,4 @@
-import type { GeneratedNote } from './types';
+import type { GeneratedNote } from './types.js';
 
 export type GenerationMode = 'single' | 'backing';
 export type PitchRange = 'low' | 'mid' | 'high';

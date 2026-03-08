@@ -1,4 +1,4 @@
-import type { GeneratedNote, LLMProvider, NextNoteRequest } from '../types';
+import type { GeneratedNote, LLMProvider, NextNoteRequest } from '../types.js';
 
 // Simple fallback provider for local testing without API keys.
 export class MockProvider implements LLMProvider {

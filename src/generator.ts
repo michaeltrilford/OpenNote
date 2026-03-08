@@ -1,5 +1,5 @@
-import type { GeneratedNote, LLMProvider } from './types';
-import { sanitizeNote } from './validate';
+import type { GeneratedNote, LLMProvider } from './types.js';
+import { sanitizeNote } from './validate.js';
 
 export type GenerationConfig = {
   theme: string;

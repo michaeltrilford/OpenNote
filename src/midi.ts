@@ -1,8 +1,8 @@
 import readline from 'node:readline';
 import { createInterface } from 'node:readline/promises';
-import type { MetronomeMode, NoteEvent } from './arrangement';
-import type { InstrumentProfile } from './instrument';
-import type { GeneratedNote } from './types';
+import type { MetronomeMode, NoteEvent } from './arrangement.js';
+import type { InstrumentProfile } from './instrument.js';
+import type { GeneratedNote } from './types.js';
 
 export type MidiNoteOn = {
   pitch: number;

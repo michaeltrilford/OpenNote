@@ -1,4 +1,4 @@
-import type { NextNoteRequest } from './types';
+import type { NextNoteRequest } from './types.js';
 
 export function systemPrompt(): string {
   return [

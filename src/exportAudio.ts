@@ -2,9 +2,9 @@ import { access, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { writeFile } from 'node:fs/promises';
-import type { NoteEvent } from './arrangement';
-import type { FxSettings } from './fx';
-import type { GeneratedNote } from './types';
+import type { NoteEvent } from './arrangement.js';
+import type { FxSettings } from './fx.js';
+import type { GeneratedNote } from './types.js';
 
 const SAMPLE_RATE = 44100;
 

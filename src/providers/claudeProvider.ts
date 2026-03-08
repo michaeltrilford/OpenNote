@@ -1,6 +1,6 @@
-import type { GeneratedNote, LLMProvider, NextNoteRequest } from '../types';
-import { systemPrompt, userPrompt } from '../prompt';
-import { computeRetryDelayMs, shouldRetryStatus, waitForRetry } from './retry';
+import type { GeneratedNote, LLMProvider, NextNoteRequest } from '../types.js';
+import { systemPrompt, userPrompt } from '../prompt.js';
+import { computeRetryDelayMs, shouldRetryStatus, waitForRetry } from './retry.js';
 
 export class ClaudeProvider implements LLMProvider {
   constructor(

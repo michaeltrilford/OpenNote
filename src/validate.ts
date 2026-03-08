@@ -1,4 +1,4 @@
-import type { GeneratedNote } from './types';
+import type { GeneratedNote } from './types.js';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, n));

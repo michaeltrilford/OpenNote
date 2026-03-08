@@ -1,7 +1,7 @@
-import type { GeneratedNote, LLMProvider, NextNoteRequest } from '../types';
-import { assertHeaderSafeApiKey } from './auth';
-import { systemPrompt, userPrompt } from '../prompt';
-import { computeRetryDelayMs, shouldRetryStatus, waitForRetry } from './retry';
+import type { GeneratedNote, LLMProvider, NextNoteRequest } from '../types.js';
+import { assertHeaderSafeApiKey } from './auth.js';
+import { systemPrompt, userPrompt } from '../prompt.js';
+import { computeRetryDelayMs, shouldRetryStatus, waitForRetry } from './retry.js';
 
 type ChatCompletionResponse = {
   choices?: Array<{

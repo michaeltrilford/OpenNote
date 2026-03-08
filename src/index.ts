@@ -1,13 +1,14 @@
+#!/usr/bin/env node
 import { dirname, extname, join, basename } from 'node:path';
 import { unlink } from 'node:fs/promises';
-import { exportSequenceToMidi } from './exportMidi';
+import { exportSequenceToMidi } from './exportMidi.js';
 import {
   exportSequenceToWav,
   exportWavToMp3,
   exportWavToMp4,
   isFfmpegMissing,
   processRecordedWav,
-} from './exportAudio';
+} from './exportAudio.js';
 import {
   applyGrowthAndDuration,
   applyTimingFeel,
@@ -22,15 +23,15 @@ import {
   type NoteEvent,
   type PitchRange,
   type TimingFeel,
-} from './arrangement';
-import { applyFxToSequence, buildFxSettings, type DecayStyle, type FxPresetName, type FxSettings } from './fx';
-import { applyInstrumentProfile, getInstrumentProfile, type InstrumentName } from './instrument';
-import { promptCliConfig } from './cli';
-import { generateSequence } from './generator';
-import { playSequenceToOutput, waitForSeedNote } from './midi';
-import { openExportTarget, type OpenAfterExport } from './openExport';
-import { buildProvider, type ProviderName } from './providers/factory';
-import type { GeneratedNote } from './types';
+} from './arrangement.js';
+import { applyFxToSequence, buildFxSettings, type DecayStyle, type FxPresetName, type FxSettings } from './fx.js';
+import { applyInstrumentProfile, getInstrumentProfile, type InstrumentName } from './instrument.js';
+import { promptCliConfig } from './cli.js';
+import { generateSequence } from './generator.js';
+import { playSequenceToOutput, waitForSeedNote } from './midi.js';
+import { openExportTarget, type OpenAfterExport } from './openExport.js';
+import { buildProvider, type ProviderName } from './providers/factory.js';
+import type { GeneratedNote } from './types.js';
 
 const c = {
   reset: '\x1b[0m',

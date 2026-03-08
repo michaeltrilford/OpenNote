@@ -17,6 +17,7 @@ dist/
 build/
 .tsbuildinfo
 .cache/
+/.npm-cache/
 
 # Test/coverage
 coverage/
