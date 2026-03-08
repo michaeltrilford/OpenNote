@@ -127,7 +127,8 @@ function clampExportAudioForRuntime(
   runtime: RuntimeMode,
   value: 'none' | 'wav' | 'mp3' | 'mp4',
 ): 'none' | 'wav' | 'mp3' | 'mp4' {
-  return isWebRuntime(runtime) ? 'none' : value;
+  if (isWebRuntime(runtime)) return value === 'none' ? 'none' : 'wav';
+  return value;
 }
 
 function getOpenAfterExportOptions(runtime: RuntimeMode): Option<'none' | 'finder' | 'garageband'>[] {
