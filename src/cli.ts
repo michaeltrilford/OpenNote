@@ -13,7 +13,10 @@ import type {
 import type { DecayStyle, FxPresetName } from './fx.js';
 import type { ProviderName } from './providers/factory.js';
 
+export type RuntimeMode = 'desktop' | 'web';
+
 export type CliConfig = {
+  runtime: RuntimeMode;
   provider: ProviderName;
   providerAuth: 'none' | 'env' | 'session';
   source: 'generated' | 'record';
@@ -108,6 +111,40 @@ type InputPromptFn = (cfg: any) => Promise<string>;
 type PasswordPromptFn = (cfg: any) => Promise<string>;
 type SetupPath = 'basic' | 'surprise' | 'advanced';
 type SurpriseStrength = 'low' | 'medium' | 'wild';
+
+function isWebRuntime(runtime: RuntimeMode): boolean {
+  return runtime === 'web';
+}
+
+function clampOpenAfterExportForRuntime(
+  runtime: RuntimeMode,
+  value: 'none' | 'finder' | 'garageband',
+): 'none' | 'finder' | 'garageband' {
+  return isWebRuntime(runtime) ? 'none' : value;
+}
+
+function clampExportAudioForRuntime(
+  runtime: RuntimeMode,
+  value: 'none' | 'mp3' | 'mp4',
+): 'none' | 'mp3' | 'mp4' {
+  return isWebRuntime(runtime) ? 'none' : value;
+}
+
+function getOpenAfterExportOptions(runtime: RuntimeMode): Option<'none' | 'finder' | 'garageband'>[] {
+  return isWebRuntime(runtime)
+    ? OPEN_AFTER_EXPORT_OPTIONS.filter((option) => option.value === 'none')
+    : OPEN_AFTER_EXPORT_OPTIONS;
+}
+
+function getExportAudioOptions(
+  runtime: RuntimeMode,
+  source: 'generated' | 'record',
+): Option<'none' | 'mp3' | 'mp4'>[] {
+  const options = source === 'record' ? EXPORT_AUDIO_RECORD_OPTIONS : EXPORT_AUDIO_OPTIONS;
+  return isWebRuntime(runtime)
+    ? options.filter((option) => option.value === 'none')
+    : options;
+}
 
 const inquirerTheme = {
   icon: {
@@ -265,7 +302,7 @@ function strengthChance(strength: SurpriseStrength, low: number, medium: number,
   return Math.random() < p;
 }
 
-function surprisePreset(theme: string, strength: SurpriseStrength): {
+function surprisePreset(runtime: RuntimeMode, theme: string, strength: SurpriseStrength): {
   source: 'generated' | 'record';
   mode: GenerationMode;
   instrument: InstrumentName;
@@ -413,9 +450,9 @@ function surprisePreset(theme: string, strength: SurpriseStrength): {
   const length = surpriseLength();
   const bpm = surpriseBpm(theme);
   const seedPitch = surpriseSeed();
-  const exportAudio: 'none' | 'mp3' | 'mp4' = 'mp4';
+  const exportAudio: 'none' | 'mp3' | 'mp4' = clampExportAudioForRuntime(runtime, 'mp4');
   const exportStems = true;
-  const openAfterExport: 'none' | 'finder' | 'garageband' = 'finder';
+  const openAfterExport: 'none' | 'finder' | 'garageband' = clampOpenAfterExportForRuntime(runtime, 'finder');
   const rationale = [
     source === 'record' ? 'Picked Record Player for character rendering.' : 'Picked Generate for direct melodic flow.',
     mode === 'backing' ? 'Enabled backing for fuller arrangement.' : 'Kept single-track focus.',
@@ -889,8 +926,9 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         theme: inquirerTheme,
       })) as SurpriseStrength;
       const theme = surpriseTheme();
-      const picked = surprisePreset(theme, surpriseStrength);
+      const picked = surprisePreset(defaults.runtime, theme, surpriseStrength);
       const config: CliConfig = {
+        runtime: defaults.runtime,
         provider,
         providerAuth,
         source: picked.source,
@@ -977,6 +1015,7 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       );
 
       const config: CliConfig = {
+        runtime: defaults.runtime,
         provider,
         providerAuth,
         source: 'generated',
@@ -1012,8 +1051,8 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         seedPitch,
         seedSource: 'manual',
         beep: false,
-        openAfterExport: 'finder',
-        exportAudio: 'mp4',
+        openAfterExport: clampOpenAfterExportForRuntime(defaults.runtime, 'finder'),
+        exportAudio: clampExportAudioForRuntime(defaults.runtime, 'mp4'),
         exportStems: true,
         eqMode: defaults.eqMode,
         recordDevice: defaults.recordDevice,
@@ -1566,19 +1605,20 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
     const beep = false;
 
     section('14) Export Open Action', 'What should happen right after export?');
+    const openAfterExportOptions = getOpenAfterExportOptions(defaults.runtime);
     const openAfterExport = (await selectPrompt({
       message: 'After export',
-      choices: OPEN_AFTER_EXPORT_OPTIONS.map((option) => ({
+      choices: openAfterExportOptions.map((option) => ({
         value: option.value,
         name: option.label,
         description: option.help,
       })),
-      default: defaults.openAfterExport,
+      default: clampOpenAfterExportForRuntime(defaults.runtime, defaults.openAfterExport),
       theme: inquirerTheme,
     })) as 'none' | 'finder' | 'garageband';
 
     section('15) Export Media Format', 'Optional extra export format when you choose export actions.');
-    const exportAudioOptions = source === 'record' ? EXPORT_AUDIO_RECORD_OPTIONS : EXPORT_AUDIO_OPTIONS;
+    const exportAudioOptions = getExportAudioOptions(defaults.runtime, source);
     const exportAudio = (await selectPrompt({
       message: 'Export profile',
       choices: exportAudioOptions.map((option) => ({
@@ -1586,11 +1626,15 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
         name: option.label,
         description: option.help,
       })),
-      default: defaults.exportAudio === 'none' ? 'mp4' : defaults.exportAudio,
+      default: clampExportAudioForRuntime(
+        defaults.runtime,
+        defaults.exportAudio === 'none' && !isWebRuntime(defaults.runtime) ? 'mp4' : defaults.exportAudio,
+      ),
       theme: inquirerTheme,
     })) as 'none' | 'mp3' | 'mp4';
 
     const config = {
+      runtime: defaults.runtime,
       provider,
       providerAuth,
       source,

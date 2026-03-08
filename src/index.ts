@@ -26,7 +26,7 @@ import {
 } from './arrangement.js';
 import { applyFxToSequence, buildFxSettings, type DecayStyle, type FxPresetName, type FxSettings } from './fx.js';
 import { applyInstrumentProfile, getInstrumentProfile, type InstrumentName } from './instrument.js';
-import { promptCliConfig } from './cli.js';
+import { promptCliConfig, type RuntimeMode } from './cli.js';
 import { generateSequence } from './generator.js';
 import { playSequenceToOutput, waitForSeedNote } from './midi.js';
 import { openExportTarget, type OpenAfterExport } from './openExport.js';
@@ -124,6 +124,29 @@ function floatArg(name: string, fallback: number, min: number, max: number): num
   return Math.max(min, Math.min(max, raw));
 }
 
+function runtimeArg(name: string, fallback: RuntimeMode): RuntimeMode {
+  const raw = arg(name, fallback).trim().toLowerCase();
+  return raw === 'web' ? 'web' : 'desktop';
+}
+
+function clampOpenAfterExportForRuntime(
+  runtime: RuntimeMode,
+  value: OpenAfterExport,
+): OpenAfterExport {
+  return runtime === 'web' ? 'none' : value;
+}
+
+function clampExportAudioForRuntime(
+  runtime: RuntimeMode,
+  value: 'none' | 'mp3' | 'mp4',
+): 'none' | 'mp3' | 'mp4' {
+  return runtime === 'web' ? 'none' : value;
+}
+
+function isWebRuntime(runtime: RuntimeMode): boolean {
+  return runtime === 'web';
+}
+
 type PostRunAction = 'finish' | 'retry' | 'export-finish' | 'export-retry';
 
 type StemGroups = {
@@ -155,16 +178,20 @@ function openActionLabel(openAfterExport: OpenAfterExport): string {
 }
 
 async function promptPostRunAction(
+  runtime: RuntimeMode,
   openAfterExport: OpenAfterExport,
   source: 'generated' | 'record',
 ): Promise<PostRunAction> {
   const inquirer = await import('@inquirer/prompts');
   const exportLabel = source === 'record' ? 'Export MIDI (record-player FX)' : 'Export MIDI';
+  const exportActionLabel = isWebRuntime(runtime)
+    ? exportLabel
+    : `${exportLabel} + ${openActionLabel(openAfterExport)}`;
   const selection = await inquirer.select({
-    message: `Next action (export will ${openActionLabel(openAfterExport)})`,
+    message: isWebRuntime(runtime) ? 'Next action' : `Next action (export will ${openActionLabel(openAfterExport)})`,
     choices: [
-      { value: 'export-finish', name: `${exportLabel} + ${openActionLabel(openAfterExport)} + finish` },
-      { value: 'export-retry', name: `${exportLabel} + ${openActionLabel(openAfterExport)} + retry` },
+      { value: 'export-finish', name: `${exportActionLabel} + finish` },
+      { value: 'export-retry', name: `${exportActionLabel} + retry` },
       { value: 'retry', name: 'Retry (new take)' },
       { value: 'finish', name: 'Finish' },
     ],
@@ -327,6 +354,7 @@ Non-interactive mode:
   npm run note -- --no-interactive --provider=mock --theme="ambient" --length=16 --bpm=120 --seed=60
 
 Flags:
+  --runtime=desktop|web
   --provider=mock|openai|gemini|claude|groq|grok
   --source=generated|record
   --instrument=lead|bass|pad|keys|drums
@@ -398,6 +426,7 @@ async function main() {
 
   const interactive = !process.argv.includes('--no-interactive');
   const exportPathFlag = process.argv.find((a) => a.startsWith('--export-midi='))?.split('=').slice(1).join('=');
+  const runtime = runtimeArg('runtime', 'desktop');
   const mode = arg('mode', 'single') as GenerationMode;
   const backing: BackingControls = {
     drums: boolArg('backing-drums', mode === 'backing'),
@@ -412,6 +441,7 @@ async function main() {
     deviate: intArg('deviate', 0, 0, 100),
   };
   const defaults = {
+    runtime,
     provider: arg('provider', 'mock') as ProviderName,
     providerAuth: (arg('provider', 'mock') === 'mock' ? 'none' : 'env') as 'none' | 'env' | 'session',
     source: arg('source', 'generated') as 'generated' | 'record',
@@ -436,8 +466,8 @@ async function main() {
     seedPitch: intArg('seed', 60, 0, 127),
     seedSource: (arg('seed-source', 'keyboard') as 'manual' | 'keyboard'),
     beep: boolArg('beep', false),
-    openAfterExport: (arg('open-after-export', 'finder') as OpenAfterExport),
-    exportAudio: (arg('export-audio', 'none') as 'none' | 'mp3' | 'mp4'),
+    openAfterExport: clampOpenAfterExportForRuntime(runtime, arg('open-after-export', 'finder') as OpenAfterExport),
+    exportAudio: clampExportAudioForRuntime(runtime, arg('export-audio', 'none') as 'none' | 'mp3' | 'mp4'),
     exportStems: boolArg('export-stems', arg('export-audio', 'none') !== 'none'),
     eqMode: (arg('eq-mode', 'balanced') as 'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone'),
     recordDevice: '',
@@ -571,7 +601,7 @@ async function main() {
 
     if (!interactive) break;
 
-    const action = await promptPostRunAction(config.openAfterExport, config.source);
+    const action = await promptPostRunAction(config.runtime, config.openAfterExport, config.source);
     if (action === 'finish') {
       keepRunning = false;
       continue;
