@@ -182,9 +182,12 @@ async function promptPostRunAction(
   runtime: RuntimeMode,
   openAfterExport: OpenAfterExport,
   source: 'generated' | 'record',
+  exportAudio: 'none' | 'wav' | 'mp3' | 'mp4',
 ): Promise<PostRunAction> {
   const inquirer = await import('@inquirer/prompts');
-  const exportLabel = source === 'record' ? 'Export MIDI (record-player FX)' : 'Export MIDI';
+  const exportLabel = isWebRuntime(runtime)
+    ? (exportAudio === 'wav' ? 'Export MIDI + WAV' : 'Export MIDI')
+    : source === 'record' ? 'Export MIDI (record-player FX)' : 'Export MIDI';
   const exportActionLabel = isWebRuntime(runtime)
     ? exportLabel
     : `${exportLabel} + ${openActionLabel(openAfterExport)}`;
@@ -207,6 +210,7 @@ function defaultMidiPath(): string {
 }
 
 async function maybeExportMidi(
+  runtime: RuntimeMode,
   sequence: GeneratedNote[] | NoteEvent[],
   bpm: number,
   explicitPath: string | undefined,
@@ -267,7 +271,7 @@ async function maybeExportMidi(
       let renderWav = writtenWav;
       let processedWav: string | null = null;
 
-      const shouldProcess = recordPlayerFx.enabled && (
+      const shouldProcess = runtime !== 'web' && recordPlayerFx.enabled && (
         recordPlayerFx.eqMode !== 'flat'
         || recordPlayerFx.profile !== 'default'
         || recordPlayerFx.family !== 'character'
@@ -598,6 +602,7 @@ async function main() {
 
     if (exportPathFlag && !interactive) {
       await maybeExportMidi(
+        config.runtime,
         playbackEvents,
         config.bpm,
         exportPathFlag,
@@ -625,7 +630,7 @@ async function main() {
 
     if (!interactive) break;
 
-    const action = await promptPostRunAction(config.runtime, config.openAfterExport, config.source);
+    const action = await promptPostRunAction(config.runtime, config.openAfterExport, config.source, config.exportAudio);
     if (action === 'finish') {
       keepRunning = false;
       continue;
@@ -637,6 +642,7 @@ async function main() {
 
     if (action === 'export-finish') {
       await maybeExportMidi(
+        config.runtime,
         playbackEvents,
         config.bpm,
         undefined,
@@ -664,6 +670,7 @@ async function main() {
     }
 
     await maybeExportMidi(
+      config.runtime,
       playbackEvents,
       config.bpm,
       undefined,
