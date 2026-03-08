@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { dirname, extname, join, basename } from 'node:path';
-import { unlink } from 'node:fs/promises';
+import { mkdir, rename, unlink } from 'node:fs/promises';
 import { exportSequenceToMidi } from './exportMidi.js';
 import {
   exportSequenceToWav,
@@ -138,9 +138,10 @@ function clampOpenAfterExportForRuntime(
 
 function clampExportAudioForRuntime(
   runtime: RuntimeMode,
-  value: 'none' | 'mp3' | 'mp4',
-): 'none' | 'mp3' | 'mp4' {
-  return runtime === 'web' ? 'none' : value;
+  value: 'none' | 'wav' | 'mp3' | 'mp4',
+): 'none' | 'wav' | 'mp3' | 'mp4' {
+  if (runtime === 'web') return value === 'none' ? 'none' : 'wav';
+  return value;
 }
 
 function isWebRuntime(runtime: RuntimeMode): boolean {
@@ -210,7 +211,7 @@ async function maybeExportMidi(
   bpm: number,
   explicitPath: string | undefined,
   openAfterExport: OpenAfterExport,
-  exportAudio: 'none' | 'mp3' | 'mp4',
+  exportAudio: 'none' | 'wav' | 'mp3' | 'mp4',
   exportStems: boolean,
   stems: StemGroups,
   coverImagePath: string,
@@ -299,22 +300,44 @@ async function maybeExportMidi(
         }
       }
 
-      if (exportAudio === 'mp3') {
+      if (exportAudio === 'wav') {
+        const wavPath = `${baseNoExt}.wav`;
+        if (renderWav !== writtenWav) {
+          try {
+            await unlink(writtenWav);
+          } catch {
+            // Ignore temp cleanup errors.
+          }
+        }
+        const finalWav = renderWav === wavPath ? renderWav : renderWav.replace(/\.__(?:recordfx|temp)\.wav$/, '.wav');
+        if (finalWav !== renderWav) {
+          await mkdir(dirname(finalWav), { recursive: true });
+          await rename(renderWav, finalWav);
+        }
+        console.log(color('WAV exported:', palette.soft), finalWav);
+        openPath = finalWav;
+      } else if (exportAudio === 'mp3') {
         const mp3Path = `${baseNoExt}.mp3`;
         const writtenMp3 = await exportWavToMp3(renderWav, mp3Path);
         console.log(color('MP3 exported:', palette.soft), writtenMp3);
         openPath = writtenMp3;
+
+        try {
+          await unlink(writtenWav);
+        } catch {
+          // Ignore temp cleanup errors.
+        }
       } else {
         const mp4Path = `${baseNoExt}.mp4`;
         const writtenMp4 = await exportWavToMp4(renderWav, mp4Path, coverImagePath);
         console.log(color('MP4 exported:', palette.soft), writtenMp4);
         openPath = writtenMp4;
-      }
 
-      try {
-        await unlink(writtenWav);
-      } catch {
-        // Ignore temp cleanup errors.
+        try {
+          await unlink(writtenWav);
+        } catch {
+          // Ignore temp cleanup errors.
+        }
       }
       if (processedWav) {
         try {
@@ -386,6 +409,7 @@ Flags:
   --bpm=<tempo>
   --seed=<midi pitch 0-127>
   --seed-source=keyboard|manual
+  --export-audio=none|wav|mp3|mp4
   --beep=true|false
   --export-midi=<path.mid>
   --open-after-export=none|finder|garageband
@@ -467,7 +491,7 @@ async function main() {
     seedSource: (arg('seed-source', 'keyboard') as 'manual' | 'keyboard'),
     beep: boolArg('beep', false),
     openAfterExport: clampOpenAfterExportForRuntime(runtime, arg('open-after-export', 'finder') as OpenAfterExport),
-    exportAudio: clampExportAudioForRuntime(runtime, arg('export-audio', 'none') as 'none' | 'mp3' | 'mp4'),
+    exportAudio: clampExportAudioForRuntime(runtime, arg('export-audio', 'none') as 'none' | 'wav' | 'mp3' | 'mp4'),
     exportStems: boolArg('export-stems', arg('export-audio', 'none') !== 'none'),
     eqMode: (arg('eq-mode', 'balanced') as 'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone'),
     recordDevice: '',

@@ -42,7 +42,7 @@ export type CliConfig = {
   seedSource: 'manual' | 'keyboard';
   beep: boolean;
   openAfterExport: 'none' | 'finder' | 'garageband';
-  exportAudio: 'none' | 'mp3' | 'mp4';
+  exportAudio: 'none' | 'wav' | 'mp3' | 'mp4';
   exportStems: boolean;
   eqMode: 'balanced' | 'flat' | 'warm' | 'bright' | 'bass' | 'phone';
   recordDevice: string;
@@ -125,8 +125,8 @@ function clampOpenAfterExportForRuntime(
 
 function clampExportAudioForRuntime(
   runtime: RuntimeMode,
-  value: 'none' | 'mp3' | 'mp4',
-): 'none' | 'mp3' | 'mp4' {
+  value: 'none' | 'wav' | 'mp3' | 'mp4',
+): 'none' | 'wav' | 'mp3' | 'mp4' {
   return isWebRuntime(runtime) ? 'none' : value;
 }
 
@@ -139,10 +139,10 @@ function getOpenAfterExportOptions(runtime: RuntimeMode): Option<'none' | 'finde
 function getExportAudioOptions(
   runtime: RuntimeMode,
   source: 'generated' | 'record',
-): Option<'none' | 'mp3' | 'mp4'>[] {
+): Option<'none' | 'wav' | 'mp3' | 'mp4'>[] {
   const options = source === 'record' ? EXPORT_AUDIO_RECORD_OPTIONS : EXPORT_AUDIO_OPTIONS;
   return isWebRuntime(runtime)
-    ? options.filter((option) => option.value === 'none')
+    ? options.filter((option) => option.value === 'none' || option.value === 'wav')
     : options;
 }
 
@@ -201,15 +201,17 @@ const OPEN_AFTER_EXPORT_OPTIONS: Option<'none' | 'finder' | 'garageband'>[] = [
   { value: 'garageband', label: 'Open in GarageBand', help: 'Launch GarageBand with exported MIDI.' },
 ];
 
-const EXPORT_AUDIO_OPTIONS: Option<'none' | 'mp3' | 'mp4'>[] = [
+const EXPORT_AUDIO_OPTIONS: Option<'none' | 'wav' | 'mp3' | 'mp4'>[] = [
   { value: 'mp4', label: 'MIDI + MP4', help: 'Render video with static cover image + audio.' },
   { value: 'mp3', label: 'MIDI + MP3', help: 'Render audio from generated notes.' },
+  { value: 'wav', label: 'MIDI + WAV', help: 'Render playable WAV audio without ffmpeg.' },
   { value: 'none', label: 'MIDI only (.mid)', help: 'No extra audio/video export.' },
 ];
 
-const EXPORT_AUDIO_RECORD_OPTIONS: Option<'none' | 'mp3' | 'mp4'>[] = [
+const EXPORT_AUDIO_RECORD_OPTIONS: Option<'none' | 'wav' | 'mp3' | 'mp4'>[] = [
   { value: 'mp4', label: 'MIDI + MP4', help: 'Render video with record-player character FX.' },
   { value: 'mp3', label: 'MIDI + MP3', help: 'Render audio with record-player character FX.' },
+  { value: 'wav', label: 'MIDI + WAV', help: 'Render playable WAV audio with record-player character FX.' },
   { value: 'none', label: 'MIDI only (.mid)', help: 'No extra audio/video export.' },
 ];
 
@@ -329,7 +331,7 @@ function surprisePreset(runtime: RuntimeMode, theme: string, strength: SurpriseS
   recordScratch: 'off' | 'texture' | 'dj';
   recordWavy: number;
   openAfterExport: 'none' | 'finder' | 'garageband';
-  exportAudio: 'none' | 'mp3' | 'mp4';
+  exportAudio: 'none' | 'wav' | 'mp3' | 'mp4';
   exportStems: boolean;
   length: number;
   bpm: number;
@@ -450,7 +452,7 @@ function surprisePreset(runtime: RuntimeMode, theme: string, strength: SurpriseS
   const length = surpriseLength();
   const bpm = surpriseBpm(theme);
   const seedPitch = surpriseSeed();
-  const exportAudio: 'none' | 'mp3' | 'mp4' = clampExportAudioForRuntime(runtime, 'mp4');
+  const exportAudio: 'none' | 'wav' | 'mp3' | 'mp4' = clampExportAudioForRuntime(runtime, 'mp4');
   const exportStems = true;
   const openAfterExport: 'none' | 'finder' | 'garageband' = clampOpenAfterExportForRuntime(runtime, 'finder');
   const rationale = [
@@ -1628,10 +1630,10 @@ export async function promptCliConfig(defaults: CliConfig): Promise<CliConfig> {
       })),
       default: clampExportAudioForRuntime(
         defaults.runtime,
-        defaults.exportAudio === 'none' && !isWebRuntime(defaults.runtime) ? 'mp4' : defaults.exportAudio,
+        defaults.exportAudio === 'none' ? (isWebRuntime(defaults.runtime) ? 'wav' : 'mp4') : defaults.exportAudio,
       ),
       theme: inquirerTheme,
-    })) as 'none' | 'mp3' | 'mp4';
+    })) as 'none' | 'wav' | 'mp3' | 'mp4';
 
     const config = {
       runtime: defaults.runtime,
